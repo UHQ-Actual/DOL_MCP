@@ -86,6 +86,95 @@ test("live search sends X-Goog-Api-Key and X-Goog-FieldMask headers and POST bod
   assert.equal(result.places[0].name, "Demo");
 });
 
+test("auto-pages until maxResults reached and dedupes by placeId", async () => {
+  const responses = [
+    { places: [rawPlace("p1", "One"), rawPlace("p2", "Two")], nextPageToken: "tok-1" },
+    { places: [rawPlace("p2", "Two-Dup"), rawPlace("p3", "Three")], nextPageToken: "tok-2" },
+    { places: [rawPlace("p4", "Four")], nextPageToken: null },
+  ];
+  let i = 0;
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async () => new Response(JSON.stringify(responses[i++]), { status: 200 }),
+  });
+
+  const result = await client.search({ query: "x", maxResults: 60, dryRun: false });
+
+  assert.equal(result.requestCount, 3);
+  assert.deepEqual(result.places.map((p) => p.placeId), ["p1", "p2", "p3", "p4"]);
+});
+
+test("stops paging once maxResults is reached", async () => {
+  const responses = [
+    { places: [rawPlace("p1", "One"), rawPlace("p2", "Two")], nextPageToken: "tok-1" },
+    { places: [rawPlace("p3", "Three")], nextPageToken: "tok-2" },
+  ];
+  let i = 0;
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async () => new Response(JSON.stringify(responses[i++]), { status: 200 }),
+  });
+
+  const result = await client.search({ query: "x", maxResults: 2, dryRun: false });
+
+  assert.equal(result.requestCount, 1);
+  assert.equal(result.places.length, 2);
+});
+
+test("excludeClosed filters CLOSED_PERMANENTLY and CLOSED_TEMPORARILY in live mode", async () => {
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async () => new Response(JSON.stringify({ places: [
+      rawPlace("p1", "Open"),
+      rawPlace("p2", "Closed Perm", { businessStatus: "CLOSED_PERMANENTLY" }),
+      rawPlace("p3", "Closed Temp", { businessStatus: "CLOSED_TEMPORARILY" }),
+    ] }), { status: 200 }),
+  });
+
+  const result = await client.search({ query: "x", excludeClosed: true, dryRun: false });
+
+  assert.deepEqual(result.places.map((p) => p.placeId), ["p1"]);
+});
+
+test("minRating filters places below threshold; null ratings are kept", async () => {
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async () => new Response(JSON.stringify({ places: [
+      rawPlace("p1", "Hi", { rating: 4.6 }),
+      rawPlace("p2", "Lo", { rating: 3.9 }),
+      rawPlace("p3", "Null", { rating: null }),
+    ] }), { status: 200 }),
+  });
+
+  const result = await client.search({ query: "x", minRating: 4.5, dryRun: false });
+
+  assert.deepEqual(result.places.map((p) => p.placeId), ["p1", "p3"]);
+});
+
+test("throws clear error when no API key in live mode", async () => {
+  const client = new GooglePlacesClient();
+  await assert.rejects(
+    () => client.search({ query: "x", dryRun: false }),
+    /GOOGLE_PLACES_API_KEY is required/,
+  );
+});
+
+test("surfaces Google error response with redacted key", async () => {
+  const client = new GooglePlacesClient({
+    apiKey: "secret-xyz",
+    fetchFn: async () => new Response(JSON.stringify({ error: { message: "Bad request: secret-xyz" } }), { status: 400 }),
+  });
+
+  await assert.rejects(
+    () => client.search({ query: "x", dryRun: false }),
+    (err: Error) => {
+      assert.ok(!err.message.includes("secret-xyz"), "error message should redact key");
+      assert.ok(err.message.includes("<redacted>"));
+      return true;
+    },
+  );
+});
+
 function rawPlace(id: string, name: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
