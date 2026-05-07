@@ -168,6 +168,38 @@ export class GooglePlacesClient {
     };
   }
 
+  async detail(input: PlacesDetailInput): Promise<PlacesDetailResult> {
+    if (!input?.placeId?.trim()) {
+      throw new Error("places_detail requires a non-empty placeId.");
+    }
+    const dryRun = input.dryRun ?? !this.apiKey;
+    if (dryRun) {
+      const sample = samplePlaces().find((p) => p.placeId === input.placeId) ?? null;
+      const place = sample ? toSampleDetail(sample) : null;
+      return {
+        source: "Google Places API (New) — Place Details",
+        dryRun: true,
+        placeId: input.placeId,
+        place,
+      };
+    }
+    if (!this.apiKey) {
+      throw new Error("GOOGLE_PLACES_API_KEY is required for live Google Places detail lookups.");
+    }
+    const url = `${this.baseUrl}/${encodeURIComponent(input.placeId)}`;
+    const fieldMask = input.includeAtmosphere
+      ? `${DETAIL_FIELD_MASK_BASIC},${DETAIL_FIELD_MASK_ATMOSPHERE}`
+      : DETAIL_FIELD_MASK_BASIC;
+    const payload = await this.requestJson(url, "GET", null, fieldMask);
+    const place = normalizePlaceDetail(payload);
+    return {
+      source: "Google Places API (New) — Place Details",
+      dryRun: false,
+      placeId: input.placeId,
+      place,
+    };
+  }
+
   private requestJson(url: string, method: string, body: Record<string, unknown> | null, fieldMask: string): Promise<Record<string, unknown>> {
     if (!this.apiKey) {
       throw new Error("GOOGLE_PLACES_API_KEY is required.");
@@ -361,4 +393,63 @@ function numberValue(value: unknown): number | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+const DETAIL_FIELD_MASK_BASIC = [
+  "id",
+  "displayName",
+  "formattedAddress",
+  "websiteUri",
+  "nationalPhoneNumber",
+  "types",
+  "businessStatus",
+  "rating",
+  "userRatingCount",
+  "priceLevel",
+  "priceRange",
+  "location",
+  "googleMapsUri",
+  "regularOpeningHours",
+  "currentOpeningHours",
+  "delivery",
+  "dineIn",
+  "takeout",
+  "goodForGroups",
+].join(",");
+
+const DETAIL_FIELD_MASK_ATMOSPHERE = ["editorialSummary", "reviews"].join(",");
+
+export function normalizePlaceDetail(row: unknown): PlaceDetail | null {
+  if (!isRecord(row) || !row.id) return null;
+  const base = normalizePlace(row);
+  const editorialSummaryValue = isRecord(row.editorialSummary)
+    ? stringValue((row.editorialSummary as Record<string, unknown>).text)
+    : stringValue(row.editorialSummary);
+  return {
+    ...base,
+    regularOpeningHours: row.regularOpeningHours ?? null,
+    currentOpeningHours: row.currentOpeningHours ?? null,
+    delivery: typeof row.delivery === "boolean" ? row.delivery : null,
+    dineIn: typeof row.dineIn === "boolean" ? row.dineIn : null,
+    takeout: typeof row.takeout === "boolean" ? row.takeout : null,
+    goodForGroups: typeof row.goodForGroups === "boolean" ? row.goodForGroups : null,
+    priceRange: row.priceRange ?? null,
+    editorialSummary: editorialSummaryValue,
+    reviews: Array.isArray(row.reviews) ? row.reviews : null,
+  };
+}
+
+function toSampleDetail(place: Place): PlaceDetail {
+  return {
+    ...place,
+    regularOpeningHours: { weekdayDescriptions: ["Monday: 9:00 AM – 9:00 PM"] },
+    currentOpeningHours: null,
+    delivery: false,
+    dineIn: true,
+    takeout: true,
+    goodForGroups: true,
+    priceRange: null,
+    editorialSummary: null,
+    reviews: null,
+  };
 }

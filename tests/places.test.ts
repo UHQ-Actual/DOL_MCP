@@ -159,6 +159,68 @@ test("throws clear error when no API key in live mode", async () => {
   );
 });
 
+test("detail returns dry-run sample matching placeId", async () => {
+  const client = new GooglePlacesClient();
+  const result = await client.detail({ placeId: "sample-st-joes-cafe", dryRun: true });
+  assert.equal(result.dryRun, true);
+  assert.equal(result.placeId, "sample-st-joes-cafe");
+  assert.equal(result.place?.name, "St. Joe's Café");
+});
+
+test("detail returns null place for unknown sample id", async () => {
+  const client = new GooglePlacesClient();
+  const result = await client.detail({ placeId: "nope", dryRun: true });
+  assert.equal(result.place, null);
+});
+
+test("live detail uses GET, basic field mask, no atmosphere fields by default", async () => {
+  const captured: { url: string; init: RequestInit | undefined }[] = [];
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async (input, init) => {
+      captured.push({ url: input.toString(), init });
+      return new Response(JSON.stringify({
+        ...rawPlace("p1", "Demo"),
+        regularOpeningHours: { weekdayDescriptions: ["Monday: 9-5"] },
+        delivery: true,
+        dineIn: true,
+        takeout: false,
+      }), { status: 200 });
+    },
+  });
+
+  const result = await client.detail({ placeId: "p1", dryRun: false });
+
+  assert.equal(captured[0].url, "https://places.googleapis.com/v1/places/p1");
+  assert.equal(captured[0].init?.method, "GET");
+  const headers = new Headers(captured[0].init?.headers as HeadersInit);
+  const mask = headers.get("x-goog-fieldmask") ?? "";
+  assert.ok(mask.includes("regularOpeningHours"));
+  assert.ok(!mask.includes("editorialSummary"), "atmosphere field should be absent");
+  assert.ok(!mask.includes("reviews"));
+  assert.equal(result.place?.placeId, "p1");
+  assert.equal(result.place?.delivery, true);
+  assert.equal(result.place?.editorialSummary, null);
+});
+
+test("live detail with includeAtmosphere adds editorialSummary and reviews to mask", async () => {
+  const captured: { url: string; init: RequestInit | undefined }[] = [];
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async (input, init) => {
+      captured.push({ url: input.toString(), init });
+      return new Response(JSON.stringify(rawPlace("p1", "Demo")), { status: 200 });
+    },
+  });
+
+  await client.detail({ placeId: "p1", includeAtmosphere: true, dryRun: false });
+
+  const headers = new Headers(captured[0].init?.headers as HeadersInit);
+  const mask = headers.get("x-goog-fieldmask") ?? "";
+  assert.ok(mask.includes("editorialSummary"));
+  assert.ok(mask.includes("reviews"));
+});
+
 test("surfaces Google error response with redacted key", async () => {
   const client = new GooglePlacesClient({
     apiKey: "secret-xyz",
