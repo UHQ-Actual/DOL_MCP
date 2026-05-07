@@ -36,6 +36,24 @@ This project's primary research area is the **U.S. Midwest** — 10 states. When
 
 Most tools (`lca_search`, `osha_inspection_search`, `sam_opportunities_search`, etc.) accept exactly one `state` per call, so multi-state queries fan out into multiple tool calls and the caller merges/dedupes.
 
+## WHD district offices in the region
+
+Research and case-selection work in this project ties back to nine WHD district offices across the Midwest:
+
+| Office | State |
+|---|---|
+| Chicago | IL |
+| Columbus | OH |
+| Des Moines | IA |
+| Detroit | MI |
+| Grand Rapids | MI |
+| Indianapolis | IN |
+| Kansas City | MO |
+| Minneapolis | MN |
+| St. Louis | MO |
+
+When the user mentions "the offices" or names one of these cities without context, assume they mean the WHD district office, not a generic city query.
+
 ## Common commands
 
 ```bash
