@@ -17,6 +17,25 @@ TypeScript MCP server exposing U.S. labor-enforcement and contract data as tools
 
 Registered with Claude Code at user scope: `claude mcp add dol-whd -s user -- node <repo>/dist/server.js`.
 
+## Geographic scope
+
+This project's primary research area is the **U.S. Midwest** — 10 states. When a tool takes a `state` filter, default to these unless the user specifies otherwise:
+
+| State | Code |
+|---|---|
+| Illinois | IL |
+| Indiana | IN |
+| Iowa | IA |
+| Kansas | KS |
+| Michigan | MI |
+| Minnesota | MN |
+| Missouri | MO |
+| Nebraska | NE |
+| Ohio | OH |
+| Wisconsin | WI |
+
+Most tools (`lca_search`, `osha_inspection_search`, `sam_opportunities_search`, etc.) accept exactly one `state` per call, so multi-state queries fan out into multiple tool calls and the caller merges/dedupes.
+
 ## Common commands
 
 ```bash
