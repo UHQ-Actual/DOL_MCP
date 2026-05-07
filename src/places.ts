@@ -89,6 +89,38 @@ export class GooglePlacesClient {
     this.now = options.now ?? (() => new Date());
   }
 
+  async search(input: PlacesSearchInput): Promise<PlacesSearchResult> {
+    if (!input?.query?.trim()) {
+      throw new Error("places_search requires a non-empty query.");
+    }
+    const maxResults = normalizeMaxResults(input.maxResults);
+    const excludeClosed = input.excludeClosed ?? true;
+    const dryRun = input.dryRun ?? !this.apiKey;
+
+    if (dryRun) {
+      let places = samplePlaces();
+      if (excludeClosed) {
+        places = places.filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.businessStatus !== "CLOSED_TEMPORARILY");
+      }
+      if (typeof input.minRating === "number") {
+        const minRating = input.minRating;
+        places = places.filter((p) => p.rating === null || p.rating >= minRating);
+      }
+      places = places.slice(0, maxResults);
+      return {
+        source: "Google Places API (New) — Text Search",
+        dryRun: true,
+        count: places.length,
+        requestCount: 0,
+        query: input.query,
+        nextPageToken: null,
+        places,
+      };
+    }
+
+    throw new Error("Live Google Places search is not yet implemented.");
+  }
+
   sanitizeUrl(input: URL | string): string {
     const text = input.toString();
     if (!this.apiKey) return text;
@@ -103,4 +135,86 @@ function normalizeSecret(value: string | undefined): string | undefined {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeMaxResults(maxResults?: number): number {
+  if (!Number.isFinite(maxResults)) {
+    return 60;
+  }
+  return Math.min(60, Math.max(1, Math.trunc(maxResults ?? 60)));
+}
+
+export function samplePlaces(): Place[] {
+  return [
+    {
+      placeId: "sample-st-joes-cafe",
+      name: "St. Joe's Café",
+      address: "92 N Broad St, Hillsdale, MI 49242, USA",
+      website: null,
+      phone: null,
+      types: ["restaurant", "food", "point_of_interest", "establishment"],
+      businessStatus: "OPERATIONAL",
+      rating: 4.7,
+      userRatingCount: 70,
+      priceLevel: null,
+      location: { lat: 41.9227075, lng: -84.6323383 },
+      googleMapsUrl: "https://maps.google.com/?cid=sample-st-joes-cafe",
+    },
+    {
+      placeId: "sample-johnny-ts-bistro",
+      name: "Johnny T's Bistro",
+      address: "171 E South St, Hillsdale, MI 49242, USA",
+      website: "https://example.com/johnnyts",
+      phone: "+1 517-555-0100",
+      types: ["bistro", "american_restaurant", "restaurant", "food", "point_of_interest", "establishment"],
+      businessStatus: "OPERATIONAL",
+      rating: 4.4,
+      userRatingCount: 761,
+      priceLevel: "PRICE_LEVEL_MODERATE",
+      location: { lat: 41.9165153, lng: -84.623497 },
+      googleMapsUrl: "https://maps.google.com/?cid=sample-johnny-ts-bistro",
+    },
+    {
+      placeId: "sample-hunt-club",
+      name: "Hunt Club of Hillsdale",
+      address: "24 N Howell St, Hillsdale, MI 49242, USA",
+      website: null,
+      phone: null,
+      types: ["bar_and_grill", "bar", "restaurant", "food"],
+      businessStatus: "OPERATIONAL",
+      rating: 4.3,
+      userRatingCount: 800,
+      priceLevel: "PRICE_LEVEL_MODERATE",
+      location: { lat: 41.9206241, lng: -84.63242 },
+      googleMapsUrl: "https://maps.google.com/?cid=sample-hunt-club",
+    },
+    {
+      placeId: "sample-handmade-sandwich",
+      name: "Handmade",
+      address: "78 Hillsdale St, Hillsdale, MI 49242, USA",
+      website: null,
+      phone: null,
+      types: ["sandwich_shop", "restaurant", "food"],
+      businessStatus: "OPERATIONAL",
+      rating: 4.7,
+      userRatingCount: 380,
+      priceLevel: "PRICE_LEVEL_MODERATE",
+      location: { lat: 41.925196, lng: -84.631883 },
+      googleMapsUrl: "https://maps.google.com/?cid=sample-handmade-sandwich",
+    },
+    {
+      placeId: "sample-closed-diner",
+      name: "Closed Diner",
+      address: "1 Closed Ln, Hillsdale, MI 49242, USA",
+      website: null,
+      phone: null,
+      types: ["restaurant", "food"],
+      businessStatus: "CLOSED_PERMANENTLY",
+      rating: 3.2,
+      userRatingCount: 12,
+      priceLevel: null,
+      location: { lat: 41.92, lng: -84.63 },
+      googleMapsUrl: "https://maps.google.com/?cid=sample-closed-diner",
+    },
+  ];
 }
