@@ -77,7 +77,8 @@ test("live search sends X-Goog-Api-Key and X-Goog-FieldMask headers and POST bod
   assert.equal(captured[0].init?.method, "POST");
   const body = JSON.parse(String(captured[0].init?.body));
   assert.equal(body.textQuery, "restaurants in Hillsdale, MI");
-  assert.deepEqual(body.includedTypes, ["restaurant"]);
+  assert.equal(body.includedType, "restaurant");
+  assert.equal(body.strictTypeFiltering, true);
   assert.equal(body.regionCode, "US");
   assert.equal(result.dryRun, false);
   assert.equal(result.requestCount, 1);
@@ -134,6 +135,41 @@ test("excludeClosed filters CLOSED_PERMANENTLY and CLOSED_TEMPORARILY in live mo
   const result = await client.search({ query: "x", excludeClosed: true, dryRun: false });
 
   assert.deepEqual(result.places.map((p) => p.placeId), ["p1"]);
+});
+
+test("cityFilter drops places whose address does not contain the substring (case-insensitive)", async () => {
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async () => new Response(JSON.stringify({ places: [
+      rawPlace("p1", "In Town", { formattedAddress: "92 N Broad St, Hillsdale, MI 49242, USA" }),
+      rawPlace("p2", "Next Town", { formattedAddress: "417 W Chicago St, Jonesville, MI 49250, USA" }),
+      rawPlace("p3", "Same Name Different State", { formattedAddress: "1 Main St, Hillsdale, NY 12529, USA" }),
+      rawPlace("p4", "Lower Cased Match", { formattedAddress: "5 Some Rd, hillsdale, mi 49242, USA" }),
+    ] }), { status: 200 }),
+  });
+
+  const result = await client.search({ query: "x", cityFilter: "Hillsdale, MI", dryRun: false });
+
+  assert.deepEqual(result.places.map((p) => p.placeId), ["p1", "p4"]);
+});
+
+test("cityFilter applies to dry-run sample data too", async () => {
+  const client = new GooglePlacesClient();
+  const result = await client.search({ query: "x", dryRun: true, cityFilter: "Hillsdale" });
+  assert.ok(result.places.every((p) => (p.address ?? "").toLowerCase().includes("hillsdale")));
+  assert.ok(result.places.length > 0);
+});
+
+test("cityFilter empty string is treated as no filter", async () => {
+  const client = new GooglePlacesClient({
+    apiKey: "k",
+    fetchFn: async () => new Response(JSON.stringify({ places: [
+      rawPlace("p1", "A", { formattedAddress: "Hillsdale, MI" }),
+      rawPlace("p2", "B", { formattedAddress: "Jonesville, MI" }),
+    ] }), { status: 200 }),
+  });
+  const result = await client.search({ query: "x", cityFilter: "  ", dryRun: false });
+  assert.equal(result.places.length, 2);
 });
 
 test("minRating filters places below threshold; null ratings are kept", async () => {

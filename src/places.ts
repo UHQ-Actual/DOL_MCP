@@ -15,6 +15,7 @@ export interface PlacesSearchInput {
   excludeClosed?: boolean;
   minRating?: number;
   regionCode?: string;
+  cityFilter?: string;
   dryRun?: boolean;
 }
 
@@ -97,6 +98,8 @@ export class GooglePlacesClient {
     const excludeClosed = input.excludeClosed ?? true;
     const dryRun = input.dryRun ?? !this.apiKey;
 
+    const cityFilter = input.cityFilter?.trim().toLowerCase();
+
     if (dryRun) {
       let places = samplePlaces();
       if (excludeClosed) {
@@ -105,6 +108,9 @@ export class GooglePlacesClient {
       if (typeof input.minRating === "number") {
         const minRating = input.minRating;
         places = places.filter((p) => p.rating === null || p.rating >= minRating);
+      }
+      if (cityFilter) {
+        places = places.filter((p) => (p.address ?? "").toLowerCase().includes(cityFilter));
       }
       places = places.slice(0, maxResults);
       return {
@@ -129,9 +135,10 @@ export class GooglePlacesClient {
       regionCode: input.regionCode ?? "US",
     };
     const included = normalizeStringList(input.includedTypes);
-    const excluded = normalizeStringList(input.excludedTypes);
-    if (included.length) body.includedTypes = included;
-    if (excluded.length) body.excludedTypes = excluded;
+    if (included.length) {
+      body.includedType = included[0];
+      body.strictTypeFiltering = true;
+    }
 
     const places: Place[] = [];
     const seen = new Set<string>();
@@ -149,6 +156,7 @@ export class GooglePlacesClient {
         if (seen.has(key)) continue;
         if (excludeClosed && (place.businessStatus === "CLOSED_PERMANENTLY" || place.businessStatus === "CLOSED_TEMPORARILY")) continue;
         if (typeof input.minRating === "number" && place.rating !== null && place.rating < input.minRating) continue;
+        if (cityFilter && !(place.address ?? "").toLowerCase().includes(cityFilter)) continue;
         seen.add(key);
         places.push(place);
         if (places.length >= maxResults) break;

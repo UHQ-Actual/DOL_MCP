@@ -365,6 +365,7 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
         excludeClosed: z.boolean().optional().describe("Drop CLOSED_PERMANENTLY and CLOSED_TEMPORARILY. Defaults to true."),
         minRating: z.number().min(0).max(5).optional().describe("Filter on rating. Places with no rating are kept."),
         regionCode: z.string().optional().describe("ISO 3166-1 alpha-2 region code. Defaults to 'US'."),
+        cityFilter: z.string().optional().describe("Drop any place whose formatted address does not contain this substring (case-insensitive). Use 'Hillsdale, MI' to keep only in-town results when Google's text search spills into adjacent municipalities."),
         dryRun: z.boolean().optional().describe("Return sample places without calling Google. Defaults to true when no key is configured."),
       },
     },
