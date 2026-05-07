@@ -1,0 +1,41 @@
+{
+  "name": "dol-whd-mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for DOL WHD, OFLC LCA, OSHA, and SAM.gov data.",
+  "type": "module",
+  "bin": {
+    "dol-whd-mcp": "./dist/server.js",
+    "dol-whd-mcp-http": "./dist/httpServer.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "start:http": "node dist/httpServer.js",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "dotenv": "^17.2.3",
+    "xlsx-stream-reader": "^1.1.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "exceljs": "^4.4.0",
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.18"
+  },
+  "overrides": {
+    "ip-address": "10.2.0"
+  },
+  "license": "MIT"
+}
