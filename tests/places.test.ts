@@ -48,3 +48,58 @@ test("dry-run excludeClosed filters CLOSED_PERMANENTLY samples", async () => {
   assert.ok(all.count > open.count, "all should include closed; open should not");
   assert.ok(open.places.every((p) => p.businessStatus !== "CLOSED_PERMANENTLY"));
 });
+
+test("live search sends X-Goog-Api-Key and X-Goog-FieldMask headers and POST body", async () => {
+  const captured: { url: string; init: RequestInit | undefined }[] = [];
+  const client = new GooglePlacesClient({
+    apiKey: "test-key",
+    fetchFn: async (input, init) => {
+      captured.push({ url: input.toString(), init });
+      return new Response(JSON.stringify({ places: [rawPlace("place-1", "Demo")] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  const result = await client.search({
+    query: "restaurants in Hillsdale, MI",
+    includedTypes: ["restaurant"],
+    maxResults: 20,
+    dryRun: false,
+  });
+
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].url, "https://places.googleapis.com/v1/places:searchText");
+  const headers = new Headers(captured[0].init?.headers as HeadersInit);
+  assert.equal(headers.get("x-goog-api-key"), "test-key");
+  assert.ok(headers.get("x-goog-fieldmask")?.includes("places.id"));
+  assert.equal(captured[0].init?.method, "POST");
+  const body = JSON.parse(String(captured[0].init?.body));
+  assert.equal(body.textQuery, "restaurants in Hillsdale, MI");
+  assert.deepEqual(body.includedTypes, ["restaurant"]);
+  assert.equal(body.regionCode, "US");
+  assert.equal(result.dryRun, false);
+  assert.equal(result.requestCount, 1);
+  assert.equal(result.count, 1);
+  assert.equal(result.places[0].placeId, "place-1");
+  assert.equal(result.places[0].name, "Demo");
+});
+
+function rawPlace(id: string, name: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id,
+    displayName: { text: name, languageCode: "en" },
+    formattedAddress: `${name} address`,
+    websiteUri: null,
+    nationalPhoneNumber: null,
+    types: ["restaurant", "food"],
+    businessStatus: "OPERATIONAL",
+    rating: 4.5,
+    userRatingCount: 100,
+    priceLevel: "PRICE_LEVEL_MODERATE",
+    location: { latitude: 41.9, longitude: -84.6 },
+    googleMapsUri: `https://maps.google.com/?cid=${id}`,
+    ...overrides,
+  };
+}

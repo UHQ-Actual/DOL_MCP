@@ -118,7 +118,61 @@ export class GooglePlacesClient {
       };
     }
 
-    throw new Error("Live Google Places search is not yet implemented.");
+    if (!this.apiKey) {
+      throw new Error("GOOGLE_PLACES_API_KEY is required for live Google Places searches. Set it in the environment or .env file.");
+    }
+
+    const url = `${this.baseUrl}:searchText`;
+    const fieldMask = SEARCH_FIELD_MASK;
+    const body: Record<string, unknown> = {
+      textQuery: input.query.trim(),
+      regionCode: input.regionCode ?? "US",
+    };
+    const included = normalizeStringList(input.includedTypes);
+    const excluded = normalizeStringList(input.excludedTypes);
+    if (included.length) body.includedTypes = included;
+    if (excluded.length) body.excludedTypes = excluded;
+
+    const places: Place[] = [];
+    const seen = new Set<string>();
+    let requestCount = 0;
+    let nextPageToken: string | null = null;
+
+    while (places.length < maxResults) {
+      const requestBody = nextPageToken ? { ...body, pageToken: nextPageToken } : body;
+      requestCount += 1;
+      const payload = await this.requestJson(url, "POST", requestBody, fieldMask);
+      const rows = Array.isArray(payload.places) ? payload.places : [];
+      for (const row of rows) {
+        const place = normalizePlace(row);
+        const key = place.placeId ?? JSON.stringify(place);
+        if (seen.has(key)) continue;
+        if (excludeClosed && (place.businessStatus === "CLOSED_PERMANENTLY" || place.businessStatus === "CLOSED_TEMPORARILY")) continue;
+        if (typeof input.minRating === "number" && place.rating !== null && place.rating < input.minRating) continue;
+        seen.add(key);
+        places.push(place);
+        if (places.length >= maxResults) break;
+      }
+      nextPageToken = typeof payload.nextPageToken === "string" ? payload.nextPageToken : null;
+      if (!nextPageToken || places.length >= maxResults) break;
+    }
+
+    return {
+      source: "Google Places API (New) — Text Search",
+      dryRun: false,
+      count: places.length,
+      requestCount,
+      query: input.query,
+      nextPageToken,
+      places,
+    };
+  }
+
+  private requestJson(url: string, method: string, body: Record<string, unknown> | null, fieldMask: string): Promise<Record<string, unknown>> {
+    if (!this.apiKey) {
+      throw new Error("GOOGLE_PLACES_API_KEY is required.");
+    }
+    return requestJsonImpl(this.fetchFn, url, method, body, this.apiKey, fieldMask, (text) => this.sanitizeUrl(text));
   }
 
   sanitizeUrl(input: URL | string): string {
@@ -217,4 +271,94 @@ export function samplePlaces(): Place[] {
       googleMapsUrl: "https://maps.google.com/?cid=sample-closed-diner",
     },
   ];
+}
+
+const SEARCH_FIELD_MASK = [
+  "places.id",
+  "places.displayName",
+  "places.formattedAddress",
+  "places.websiteUri",
+  "places.nationalPhoneNumber",
+  "places.types",
+  "places.businessStatus",
+  "places.rating",
+  "places.userRatingCount",
+  "places.priceLevel",
+  "places.location",
+  "places.googleMapsUri",
+  "nextPageToken",
+].join(",");
+
+function normalizeStringList(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((v) => v.trim()).filter(Boolean))];
+}
+
+export function normalizePlace(row: unknown): Place {
+  const r = isRecord(row) ? row : {};
+  const display = isRecord(r.displayName) ? r.displayName : null;
+  const loc = isRecord(r.location) ? r.location : null;
+  return {
+    placeId: stringValue(r.id),
+    name: stringValue(display?.text) ?? stringValue(r.name),
+    address: stringValue(r.formattedAddress),
+    website: stringValue(r.websiteUri),
+    phone: stringValue(r.nationalPhoneNumber) ?? stringValue(r.internationalPhoneNumber),
+    types: Array.isArray(r.types) ? r.types.filter((t): t is string => typeof t === "string") : [],
+    businessStatus: stringValue(r.businessStatus),
+    rating: numberValue(r.rating),
+    userRatingCount: numberValue(r.userRatingCount),
+    priceLevel: stringValue(r.priceLevel),
+    location: loc && typeof loc.latitude === "number" && typeof loc.longitude === "number"
+      ? { lat: loc.latitude as number, lng: loc.longitude as number }
+      : null,
+    googleMapsUrl: stringValue(r.googleMapsUri),
+  };
+}
+
+async function requestJsonImpl(
+  fetchFn: PlacesFetchFn,
+  url: string,
+  method: string,
+  body: Record<string, unknown> | null,
+  apiKey: string,
+  fieldMask: string,
+  sanitize: (text: string) => string,
+): Promise<Record<string, unknown>> {
+  const init: RequestInit = {
+    method,
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      "x-goog-api-key": apiKey,
+      "x-goog-fieldmask": fieldMask,
+    },
+  };
+  if (body !== null) {
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetchFn(url, init);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Google Places request failed (${response.status} ${response.statusText || "HTTP error"}) at ${sanitize(url)}: ${sanitize(text).slice(0, 700)}`);
+  }
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+function stringValue(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  return text && text.toLowerCase() !== "null" ? text : null;
+}
+
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
