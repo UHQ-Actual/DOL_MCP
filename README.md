@@ -116,7 +116,7 @@ Claude.ai's mobile app shares Custom Connectors with the web UI, so adding the r
 - `lca_employer_profile`: Build a DOL LCA-only employer profile with certification counts, wage statistics, top job titles, SOC codes, worksites, H-1B dependent, and willful violator flags.
 - `foreign_labor_files`: Discover official DOL OFLC disclosure workbook, record-layout, and auxiliary file URLs for `LCA`, `PERM`, `H-2A`, `H-2B`, or `CW`.
 - `foreign_labor_fields`: Read field names from an official DOL foreign-labor disclosure XLSX file.
-- `foreign_labor_search`: Stream-search DOL OFLC foreign-labor disclosure workbooks and return a unified schema across LCA, PERM, H-2A, H-2B, and CW-1.
+- `foreign_labor_search`: Stream-search DOL OFLC foreign-labor disclosure workbooks and return a unified schema across LCA, PERM, H-2A, H-2B, and CW-1. First call per quarter downloads + parses the workbook and writes a gzipped JSONL cache alongside it; subsequent calls read the cache in 1-3 seconds.
 - `osha_fields`: Return metadata for the official DOL OSHA `inspection` or `violation` dataset.
 - `osha_inspection_search`: Search OSHA inspections by establishment, state, city, NAICS, inspection type, safety/health, and open-date range. Optionally joins non-deleted violation/citation records.
 - `osha_inspection_detail`: Look up one OSHA inspection by `activity_nr` and optionally join violation/citation records.

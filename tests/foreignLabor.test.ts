@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import ExcelJS from "exceljs";
 
-import { ForeignLaborDisclosureClient, normalizeForeignLaborProgram } from "../src/foreignLabor.js";
+import { ForeignLaborDisclosureClient, jsonlPathFor, normalizeForeignLaborProgram } from "../src/foreignLabor.js";
 
 test("discovers official DOL foreign-labor disclosure links from the performance page", async () => {
   const client = new ForeignLaborDisclosureClient({
@@ -119,6 +120,48 @@ test("searches and normalizes an H-2A disclosure workbook with hourly wages", as
     assert.equal(result.records[0].wage_annual_min, 33280);
     assert.equal(result.records[0].total_worker_positions, 24);
     assert.equal(result.records[0].source_file, "h2a.xlsx");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("builds a gzipped JSONL cache on the first XLSX scan and reads from it on the second", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "foreign-labor-mcp-"));
+  try {
+    const workbookPath = join(dir, "perm.xlsx");
+    await writePermWorkbook(workbookPath);
+    const client = new ForeignLaborDisclosureClient({ cacheDir: dir });
+
+    const jsonlPath = jsonlPathFor(workbookPath);
+    assert.equal(existsSync(jsonlPath), false, "JSONL cache should not exist before first scan");
+
+    const first = await client.search({
+      visaProgram: "PERM",
+      fiscalYear: 2026,
+      fiscalQuarter: "Q1",
+      localFile: workbookPath,
+      maxItems: 0,
+    });
+
+    assert.equal(existsSync(jsonlPath), true, "first scan must produce a JSONL.gz cache");
+    const cacheStat = await stat(jsonlPath);
+    assert.ok(cacheStat.size > 0, "JSONL cache should be non-empty");
+    assert.equal(first.scanned, 2);
+    assert.equal(first.records.length, 2);
+
+    const second = await client.search({
+      visaProgram: "PERM",
+      fiscalYear: 2026,
+      fiscalQuarter: "Q1",
+      localFile: workbookPath,
+      employerName: "Intel",
+      worksiteState: "CA",
+      maxItems: 10,
+    });
+
+    assert.equal(second.matched, 1, "filter must still apply on the JSONL fast path");
+    assert.equal(second.records[0].employer_name, "Intel Corporation");
+    assert.equal(second.records[0].soc_code, "15-1252");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

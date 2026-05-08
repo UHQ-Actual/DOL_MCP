@@ -1,8 +1,10 @@
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { createGunzip, createGzip } from "node:zlib";
 
 import XlsxStreamReader from "xlsx-stream-reader";
 
@@ -222,10 +224,11 @@ export class ForeignLaborDisclosureClient {
     const localFile = await this.resolveDisclosureFile(fileSet, input.localFile);
     const limit = normalizeMaxItems(input.maxItems);
     const matcher = createMatcher(input);
-    const scan = await readWorkbook(localFile, (row) => {
-      const normalized = normalizeForeignLaborRecord(row, fileSet.program, basename(localFile));
-      return matcher(normalized);
-    }, limit);
+    const jsonlPath = jsonlPathFor(localFile);
+
+    const scan = existsSync(jsonlPath)
+      ? await searchJsonlCache(jsonlPath, matcher, limit)
+      : await searchXlsxAndBuildCache(localFile, fileSet.program, jsonlPath, matcher, limit);
 
     return {
       program: fileSet.program,
@@ -236,7 +239,7 @@ export class ForeignLaborDisclosureClient {
       matched: scan.matched,
       scanned: scan.scanned,
       truncated: scan.truncated,
-      records: scan.rows.map((row) => normalizeForeignLaborRecord(row, fileSet.program, basename(localFile))),
+      records: scan.records,
     };
   }
 
@@ -434,6 +437,111 @@ async function readWorkbook(
   });
 
   return { headers, matched, scanned, truncated: maxRows !== null && matched > rows.length, rows };
+}
+
+export function jsonlPathFor(xlsxPath: string): string {
+  return xlsxPath.replace(/\.xlsx$/i, "") + ".jsonl.gz";
+}
+
+interface ScanResult {
+  matched: number;
+  scanned: number;
+  truncated: boolean;
+  records: ForeignLaborRecord[];
+}
+
+async function searchJsonlCache(
+  jsonlPath: string,
+  matcher: (record: ForeignLaborRecord) => boolean,
+  maxRows: number | null,
+): Promise<ScanResult> {
+  const records: ForeignLaborRecord[] = [];
+  let matched = 0;
+  let scanned = 0;
+
+  const fileStream = createReadStream(jsonlPath);
+  const gunzip = createGunzip();
+  const lines = createInterface({ input: fileStream.pipe(gunzip), crlfDelay: Infinity });
+
+  for await (const line of lines) {
+    if (!line) continue;
+    const record = JSON.parse(line) as ForeignLaborRecord;
+    scanned += 1;
+    if (!matcher(record)) continue;
+    matched += 1;
+    if (maxRows === null || records.length < maxRows) {
+      records.push(record);
+    }
+  }
+
+  return { matched, scanned, truncated: maxRows !== null && matched > records.length, records };
+}
+
+async function searchXlsxAndBuildCache(
+  xlsxPath: string,
+  program: ForeignLaborProgram,
+  jsonlPath: string,
+  matcher: (record: ForeignLaborRecord) => boolean,
+  maxRows: number | null,
+): Promise<ScanResult> {
+  const records: ForeignLaborRecord[] = [];
+  let matched = 0;
+  let scanned = 0;
+  const sourceFile = basename(xlsxPath);
+  const tmpPath = `${jsonlPath}.${process.pid}.tmp`;
+  const fileSink = createWriteStream(tmpPath);
+  const gzipSink = createGzip();
+  gzipSink.pipe(fileSink);
+
+  try {
+    await new Promise<void>((resolvePromise, reject) => {
+      const workbookReader = new XlsxStreamReader({ verbose: false, formatting: false });
+      let headers: string[] = [];
+      let bailed = false;
+      const bail = (error: Error) => {
+        if (bailed) return;
+        bailed = true;
+        reject(error);
+      };
+      workbookReader.on("error", bail);
+      gzipSink.on("error", bail);
+      fileSink.on("error", bail);
+      workbookReader.on("worksheet", (worksheetReader) => {
+        if (worksheetReader.id > 1) {
+          worksheetReader.skip();
+          return;
+        }
+        worksheetReader.on("row", (row) => {
+          if (Number(row.attributes.r) === 1) {
+            headers = headersFromSparseRow(row.values);
+            return;
+          }
+          const raw = recordFromSparseRow(headers, row.values);
+          const record = normalizeForeignLaborRecord(raw, program, sourceFile);
+          gzipSink.write(JSON.stringify(record) + "\n");
+          scanned += 1;
+          if (!matcher(record)) return;
+          matched += 1;
+          if (maxRows === null || records.length < maxRows) {
+            records.push(record);
+          }
+        });
+        worksheetReader.process();
+      });
+      workbookReader.on("end", () => {
+        gzipSink.end();
+        fileSink.on("finish", resolvePromise);
+      });
+      createReadStream(xlsxPath).on("error", bail).pipe(workbookReader);
+    });
+
+    await rename(tmpPath, jsonlPath);
+  } catch (error) {
+    await rm(tmpPath, { force: true });
+    throw error;
+  }
+
+  return { matched, scanned, truncated: maxRows !== null && matched > records.length, records };
 }
 
 async function downloadFile(fetchFn: typeof fetch, url: string, target: string): Promise<void> {

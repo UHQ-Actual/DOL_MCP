@@ -242,7 +242,7 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
     {
       title: "Search DOL Foreign Labor Disclosure Data",
       description:
-        "Stream-search and normalize DOL OFLC disclosure XLSX records across LCA, PERM, H-2A, H-2B, and CW programs.",
+        "Stream-search and normalize DOL OFLC disclosure XLSX records across LCA, PERM, H-2A, H-2B, and CW programs. The first call for a given (visaProgram, fiscalYear, fiscalQuarter) downloads the official disclosure workbook and builds a gzipped JSONL cache (slow, can take 30-90s for big LCA quarters); subsequent calls hit the cache and return in 1-3 seconds. To avoid first-call timeouts on the MCP transport, narrow with maxItems and one or more of employerName, worksiteState, socCode, or caseStatus.",
       inputSchema: foreignLaborSearchSchema,
     },
     async (args) => toTextResult(await handlers.searchForeignLabor(args)),
