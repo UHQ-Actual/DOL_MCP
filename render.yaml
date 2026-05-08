@@ -12,8 +12,6 @@ services:
         value: 0.0.0.0
       - key: DOL_MCP_ALLOW_ORIGIN
         value: https://claude.ai
-      - key: DOL_MCP_AUTH_TOKEN
-        generateValue: true
       - key: DOL_API_KEY
         sync: false
       - key: SAM_API_KEY
