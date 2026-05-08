@@ -4,3 +4,4 @@ dist/
 .cache/
 .history/
 *.log
+whd_whisard.csv

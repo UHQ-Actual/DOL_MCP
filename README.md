@@ -77,6 +77,31 @@ X-API-Key: change-this-before-exposing
 
 Keep the default host for local-only access. To make it reachable from another machine, bind to a reachable interface such as `0.0.0.0` and put it behind a trusted tunnel or reverse proxy with authentication. The DOL and SAM.gov API keys remain server-side in `.env`.
 
+## Deploy To Render
+
+The repo ships a `render.yaml` Blueprint that provisions a free Node web service.
+
+1. From the [Render dashboard](https://dashboard.render.com/), click **New → Blueprint** and point it at `https://github.com/UHQ-Actual/DOL_MCP`.
+2. Render reads `render.yaml`, creates the `dol-whd-mcp` service, generates a fresh `DOL_MCP_AUTH_TOKEN`, and prompts for the API key secrets (`DOL_API_KEY`, `SAM_API_KEY`, `GOOGLE_PLACES_API_KEY`).
+3. After the first deploy the public URL is `https://dol-whd-mcp.onrender.com` (or whatever Render assigns). Verify with:
+
+   ```bash
+   curl https://<your-service>.onrender.com/health
+   ```
+
+4. Copy the `DOL_MCP_AUTH_TOKEN` value out of the Render env var panel — you need it for the MCP client.
+
+## Connect From Claude (Phone Or Web)
+
+Claude.ai's mobile app shares Custom Connectors with the web UI, so adding the remote MCP once unlocks it on every device tied to that account.
+
+1. In Claude.ai, open **Settings → Connectors → Add custom connector**.
+2. Use the values from the Render deploy:
+   - **URL**: `https://<your-service>.onrender.com/mcp`
+   - **Auth header**: `Authorization: Bearer <DOL_MCP_AUTH_TOKEN>`
+3. Save. The connector now lists every tool registered by `createServer()` (WHD, OFLC LCA, Foreign Labor, OSHA, SAM.gov, Google Places, `ask_government_data`).
+4. Toggle the connector on inside any conversation to call the tools from your phone or laptop.
+
 ## Tools
 
 - `ask_government_data`: Route a plain-English question to the right database and execute the query against WHD enforcement, OSHA inspections, DOL foreign-labor/LCA disclosures, or SAM.gov opportunities.

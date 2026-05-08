@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: dol-whd-mcp
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:http
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DOL_MCP_HOST
+        value: 0.0.0.0
+      - key: DOL_MCP_ALLOW_ORIGIN
+        value: https://claude.ai
+      - key: DOL_MCP_AUTH_TOKEN
+        generateValue: true
+      - key: DOL_API_KEY
+        sync: false
+      - key: SAM_API_KEY
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
