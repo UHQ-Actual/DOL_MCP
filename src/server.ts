@@ -311,9 +311,24 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
       .optional()
       .describe("SAM.gov procurement type codes, such as o, k, r, p, a, or s. Defaults to o and k."),
     setAsideType: z.string().optional().describe("SAM.gov typeOfSetAside code, such as SBA, 8A, HZC, SDVOSBC, WOSB, or EDWOSB."),
-    state: z.string().optional().describe("Two-letter place-of-performance state code."),
+    officeState: z
+      .string()
+      .optional()
+      .describe("Two-letter contracting OFFICE state code. Sent server-side as SAM.gov's `state=` filter; does NOT filter by where the work is performed."),
+    state: z
+      .string()
+      .optional()
+      .describe("Deprecated alias for officeState. SAM.gov's state parameter filters by contracting office, not place of performance."),
+    placeOfPerformanceState: z
+      .string()
+      .optional()
+      .describe("Two-letter place-of-performance state code. Filtered client-side after fetch because SAM.gov's API has no server-side POP state filter."),
+    placeOfPerformanceCity: z
+      .string()
+      .optional()
+      .describe("Place-of-performance city substring (case-insensitive). Filtered client-side after fetch because SAM.gov has no server-side city filter. For metro areas fan out across multiple cities (e.g., Lansing, East Lansing) and merge."),
     postedDaysAgo: z.number().int().min(1).max(365).optional().describe("Search opportunities posted within the last N days."),
-    maxResults: z.number().int().min(1).max(1000).optional().describe("Maximum opportunities to return."),
+    maxResults: z.number().int().min(1).max(1000).optional().describe("Maximum opportunities to return after filtering."),
     dryRun: z.boolean().optional().describe("Return sample opportunities without calling SAM.gov. Defaults to true when no SAM key is configured."),
   };
 
@@ -322,7 +337,7 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
     {
       title: "Search SAM.gov Contract Opportunities",
       description:
-        "Search the official SAM.gov Opportunities API by title keywords, NAICS codes, procurement type, set-aside, place-of-performance state, and posted date range.",
+        "Search the official SAM.gov Opportunities API by title keywords, NAICS codes, procurement type, set-aside, contracting office state, and posted date range. Place-of-performance state and city filters are applied client-side because SAM.gov's v2 API does not support them server-side. Note: SAM.gov returns SOLICITATIONS (announcements), not awarded contracts; awardAmount is null on most rows. For awarded federal contracts with dollar amounts, use USAspending.gov instead.",
       inputSchema: samSearchSchema,
     },
     async (args) => toTextResult(await handlers.searchSamOpportunities(args)),

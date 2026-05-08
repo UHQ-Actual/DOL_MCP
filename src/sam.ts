@@ -12,7 +12,14 @@ export interface SamOpportunitySearchInput {
   naicsCodes?: string[];
   procurementTypes?: string[];
   setAsideType?: string;
+  /** Two-letter contracting OFFICE state code. Sent to SAM.gov as the `state=` filter. */
+  officeState?: string;
+  /** @deprecated Use `officeState`. SAM.gov's `state` parameter filters by contracting office, not place of performance. */
   state?: string;
+  /** Two-letter place-of-performance state code, applied client-side after fetch. */
+  placeOfPerformanceState?: string;
+  /** Place-of-performance city substring (case-insensitive), applied client-side after fetch. */
+  placeOfPerformanceCity?: string;
   postedDaysAgo?: number;
   maxResults?: number;
   dryRun?: boolean;
@@ -64,6 +71,7 @@ const DEFAULT_BASE_URL = "https://api.sam.gov/opportunities/v2/search";
 const MAX_PAGE_SIZE = 1000;
 const DEFAULT_PROCUREMENT_TYPES = ["o", "k"];
 const SAM_SECRET_REDACTION = "<redacted>";
+const POP_FILTER_MAX_PAGES = 10;
 
 const PROCUREMENT_TYPE_DESCRIPTIONS: Record<string, string> = {
   u: "Justification & Authorization",
@@ -94,7 +102,7 @@ export class SamGovClient {
     const maxResults = normalizeMaxResults(input.maxResults);
     const dryRun = input.dryRun ?? !this.apiKey;
     if (dryRun) {
-      const opportunities = sampleOpportunities().slice(0, maxResults);
+      const opportunities = sampleOpportunities().filter((opportunity) => matchesPopFilter(opportunity, input)).slice(0, maxResults);
       return {
         source: "SAM.gov Opportunities API",
         dryRun: true,
@@ -109,6 +117,8 @@ export class SamGovClient {
       throw new Error("SAM_GOV_API_KEY or SAM_API_KEY is required for live SAM.gov searches. Set it in the environment or .env file.");
     }
 
+    const popFiltering = Boolean(input.placeOfPerformanceState?.trim() || input.placeOfPerformanceCity?.trim());
+    const maxPagesPerTarget = popFiltering ? POP_FILTER_MAX_PAGES : Number.POSITIVE_INFINITY;
     const seen = new Set<string>();
     const opportunities: SamOpportunity[] = [];
     let requestCount = 0;
@@ -118,10 +128,12 @@ export class SamGovClient {
 
     for (const ncode of searchTargets) {
       let offset = 0;
-      while (opportunities.length < maxResults) {
-        const limit = Math.min(MAX_PAGE_SIZE, maxResults - opportunities.length);
+      let pages = 0;
+      while (opportunities.length < maxResults && pages < maxPagesPerTarget) {
+        const limit = popFiltering ? MAX_PAGE_SIZE : Math.min(MAX_PAGE_SIZE, maxResults - opportunities.length);
         const url = this.buildSearchUrl({ ...input, maxResults: limit }, ncode, offset);
         requestCount += 1;
+        pages += 1;
         const payload = await this.requestJson(url);
         const rows = Array.isArray(payload.opportunitiesData) ? payload.opportunitiesData : [];
         totalRecords = typeof payload.totalRecords === "number" ? (totalRecords ?? 0) + payload.totalRecords : totalRecords;
@@ -133,6 +145,9 @@ export class SamGovClient {
             continue;
           }
           seen.add(key);
+          if (!matchesPopFilter(opportunity, input)) {
+            continue;
+          }
           opportunities.push(opportunity);
           if (opportunities.length >= maxResults) {
             break;
@@ -219,8 +234,9 @@ export class SamGovClient {
     if (input.setAsideType?.trim()) {
       url.searchParams.set("typeOfSetAside", input.setAsideType.trim().toUpperCase());
     }
-    if (input.state?.trim()) {
-      url.searchParams.set("state", input.state.trim().toUpperCase());
+    const officeState = input.officeState?.trim() || input.state?.trim();
+    if (officeState) {
+      url.searchParams.set("state", officeState.toUpperCase());
     }
 
     return url;
@@ -448,4 +464,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchesPopFilter(opportunity: SamOpportunity, input: SamOpportunitySearchInput): boolean {
+  const popState = input.placeOfPerformanceState?.trim().toUpperCase();
+  if (popState && opportunity.performanceState?.toUpperCase() !== popState) {
+    return false;
+  }
+  const popCity = input.placeOfPerformanceCity?.trim().toLowerCase();
+  if (popCity && !(opportunity.performanceCity?.toLowerCase() ?? "").includes(popCity)) {
+    return false;
+  }
+  return true;
 }

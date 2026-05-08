@@ -138,6 +138,103 @@ test("looks up one SAM.gov opportunity by notice ID without a broad pre-search",
   assert.equal(requestedUrls[0].searchParams.has("title"), false);
 });
 
+test("filters by place-of-performance city client-side without sending it to SAM.gov", async () => {
+  const requestedUrls: URL[] = [];
+  const client = new SamGovClient({
+    apiKey: "test-key",
+    now: () => new Date("2026-05-06T12:00:00Z"),
+    fetchFn: async (input) => {
+      const url = new URL(input.toString());
+      requestedUrls.push(url);
+      return new Response(
+        JSON.stringify({
+          totalRecords: 4,
+          opportunitiesData: [
+            rawOpportunityAt("notice-1", "236220", "Lansing", "MI"),
+            rawOpportunityAt("notice-2", "236220", "Detroit", "MI"),
+            rawOpportunityAt("notice-3", "236220", "EAST LANSING", "MI"),
+            rawOpportunityAt("notice-4", "236220", "Tokyo", "JA"),
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+
+  const result = await client.search({
+    naicsCodes: ["236220"],
+    officeState: "MI",
+    placeOfPerformanceCity: "Lansing",
+    maxResults: 10,
+    dryRun: false,
+  });
+
+  assert.equal(result.count, 2);
+  assert.deepEqual(
+    result.opportunities.map((opportunity) => opportunity.noticeId).sort(),
+    ["notice-1", "notice-3"],
+  );
+  assert.equal(requestedUrls.length, 1);
+  assert.equal(requestedUrls[0].searchParams.has("placeOfPerformanceCity"), false);
+  assert.equal(requestedUrls[0].searchParams.has("city"), false);
+  assert.equal(requestedUrls[0].searchParams.get("state"), "MI");
+});
+
+test("filters by place-of-performance state client-side independent of office state", async () => {
+  const client = new SamGovClient({
+    apiKey: "test-key",
+    now: () => new Date("2026-05-06T12:00:00Z"),
+    fetchFn: async () =>
+      new Response(
+        JSON.stringify({
+          totalRecords: 3,
+          opportunitiesData: [
+            rawOpportunityAt("notice-1", "236220", "Lansing", "MI"),
+            rawOpportunityAt("notice-2", "236220", "Philadelphia", "PA"),
+            rawOpportunityAt("notice-3", "236220", "Saipan", "MP"),
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  });
+
+  const result = await client.search({
+    naicsCodes: ["236220"],
+    placeOfPerformanceState: "MI",
+    maxResults: 10,
+    dryRun: false,
+  });
+
+  assert.equal(result.count, 1);
+  assert.equal(result.opportunities[0].noticeId, "notice-1");
+});
+
+test("officeState routes to SAM.gov state filter and overrides legacy state alias", async () => {
+  const requestedUrls: URL[] = [];
+  const client = new SamGovClient({
+    apiKey: "test-key",
+    now: () => new Date("2026-05-06T12:00:00Z"),
+    fetchFn: async (input) => {
+      requestedUrls.push(new URL(input.toString()));
+      return new Response(
+        JSON.stringify({ totalRecords: 0, opportunitiesData: [] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+
+  await client.search({ officeState: "MI", state: "CA", maxResults: 5, dryRun: false });
+  assert.equal(requestedUrls[0].searchParams.get("state"), "MI");
+});
+
+function rawOpportunityAt(noticeId: string, naicsCode: string, city: string, stateCode: string): Record<string, unknown> {
+  const base = rawOpportunity(noticeId, naicsCode);
+  return {
+    ...base,
+    placeOfPerformance: { city: { name: city }, state: { code: stateCode } },
+  };
+}
+
 function rawOpportunity(noticeId: string, naicsCode: string): Record<string, unknown> {
   return {
     noticeId,
