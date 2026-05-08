@@ -12,6 +12,7 @@ TypeScript MCP server exposing U.S. labor-enforcement and contract data as tools
 | OFLC Foreign Labor (LCA, PERM, H-2A, H-2B, CW) | `foreign_labor_files`, `foreign_labor_fields`, `foreign_labor_search` |
 | OSHA inspections + violations | `osha_fields`, `osha_inspection_search`, `osha_inspection_detail` |
 | SAM.gov Opportunities | `sam_opportunities_search`, `sam_opportunity_detail`, `sam_reference` |
+| USAspending.gov Awards | `usaspending_award_search` |
 | Google Places (New) | `places_search`, `places_detail` |
 | Plain-English router | `ask_government_data` |
 
@@ -76,6 +77,7 @@ Pattern: one file per upstream API, mirroring `sam.ts` / `places.ts`.
 | `src/foreignLabor.ts` | Unified LCA / PERM / H-2A / H-2B / CW disclosure search |
 | `src/osha.ts` | OSHA inspection + violation client (built on `DolApiClient`) |
 | `src/sam.ts` | SAM.gov Opportunities client |
+| `src/usaspending.ts` | USAspending.gov award-search client (keyless POST API) |
 | `src/places.ts` | Google Places (New) Text Search + Place Details |
 | `src/queryRouter.ts` | `ask_government_data` plain-English routing |
 | `src/tools.ts` | `createToolHandlers()` wires clients to handlers |

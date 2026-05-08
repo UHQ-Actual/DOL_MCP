@@ -367,6 +367,46 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
   );
 
   server.registerTool(
+    "usaspending_award_search",
+    {
+      title: "Search USAspending.gov Federal Awards",
+      description:
+        "Search USAspending.gov for federal contract and assistance awards with KNOWN obligated dollar amounts. Use this when the user asks 'how much was contract X for' or 'all federal contracts in Y over $Z' — SAM.gov returns solicitations not awards. No API key required. Filters by NAICS, PSC, recipient, awarding agency, place-of-performance state/city/county FIPS, award amount range, and start-date range. Defaults to contract award types (A, B, C, D) for the past 12 months.",
+      inputSchema: {
+        keywords: z.string().optional().describe("Free-text keyword filter. USAspending matches against award description, recipient, and PIID."),
+        awardTypes: z
+          .array(z.string())
+          .optional()
+          .describe("USAspending award type codes. Contracts: A=BPA Call, B=Purchase Order, C=Delivery Order, D=Definitive Contract. Defaults to A,B,C,D."),
+        recipientName: z.string().optional().describe("Recipient (vendor/contractor) name substring."),
+        recipientState: z.string().optional().describe("Two-letter recipient/HQ state code."),
+        awardingAgency: z.string().optional().describe("Top-tier awarding agency name, e.g. 'Department of Defense'."),
+        naicsCodes: z.array(z.string()).optional().describe("NAICS code prefixes to require, such as 236, 237, 238 for construction."),
+        pscCodes: z.array(z.string()).optional().describe("Product/Service Code (PSC/FSC) values, such as Y1AA for new construction."),
+        placeOfPerformanceState: z.string().optional().describe("Two-letter place-of-performance state code."),
+        placeOfPerformanceCity: z.string().optional().describe("Place-of-performance city. Exact match (case-insensitive) against USAspending's POP city — fan out across 'Lansing', 'East Lansing' for metros."),
+        placeOfPerformanceCountyFips: z.string().optional().describe("3-digit county FIPS code (e.g. '049' for Eaton County, MI). Used when POP city alone is too narrow."),
+        awardAmountMin: z.number().optional().describe("Minimum award amount in dollars."),
+        awardAmountMax: z.number().optional().describe("Maximum award amount in dollars."),
+        startDateFrom: z.string().optional().describe("Inclusive lower start_date bound in YYYY-MM-DD form."),
+        startDateTo: z.string().optional().describe("Inclusive upper start_date bound in YYYY-MM-DD form."),
+        fiscalYear: z
+          .number()
+          .int()
+          .min(2008)
+          .max(2100)
+          .optional()
+          .describe("Federal fiscal year shorthand (Oct prior year through Sep). Sets start_date and end_date when no explicit range provided."),
+        sortBy: z.string().optional().describe("Sort field. Defaults to 'Award Amount'."),
+        sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort direction. Defaults to desc."),
+        maxResults: z.number().int().min(1).max(1000).optional().describe("Maximum awards to return after pagination."),
+        dryRun: z.boolean().optional().describe("Return sample awards without calling USAspending."),
+      },
+    },
+    async (args) => toTextResult(await handlers.searchUsaSpendingAwards(args)),
+  );
+
+  server.registerTool(
     "places_search",
     {
       title: "Search Google Places",

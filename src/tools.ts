@@ -10,6 +10,7 @@ import { LcaDisclosureClient, LcaFileInput, LcaProfileInput, LcaSearchInput } fr
 import { OshaFieldsInput, OshaInspectionClient, OshaInspectionDetailInput, OshaInspectionSearchInput } from "./osha.js";
 import { GooglePlacesClient, PlacesDetailInput, PlacesSearchInput } from "./places.js";
 import { SamGovClient, SamOpportunityDetailInput, SamOpportunitySearchInput } from "./sam.js";
+import { UsaSpendingAwardSearchInput, UsaSpendingClient } from "./usaspending.js";
 
 export interface MetadataInput {
   search?: string;
@@ -29,6 +30,7 @@ export function createToolHandlers(
   samClient = new SamGovClient(),
   foreignLaborClient = new ForeignLaborDisclosureClient(),
   placesClient = new GooglePlacesClient(),
+  usaSpendingClient = new UsaSpendingClient(),
 ) {
   return {
     queryEnforcement: async (input: EnforcementQueryInput = {}) => {
@@ -168,6 +170,10 @@ export function createToolHandlers(
 
     getSamOpportunity: async (input: SamOpportunityDetailInput) => {
       return await samClient.detail(input);
+    },
+
+    searchUsaSpendingAwards: async (input: UsaSpendingAwardSearchInput = {}) => {
+      return await usaSpendingClient.search(input);
     },
 
     searchPlaces: async (input: PlacesSearchInput) => {

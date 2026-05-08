@@ -120,9 +120,10 @@ Claude.ai's mobile app shares Custom Connectors with the web UI, so adding the r
 - `osha_fields`: Return metadata for the official DOL OSHA `inspection` or `violation` dataset.
 - `osha_inspection_search`: Search OSHA inspections by establishment, state, city, NAICS, inspection type, safety/health, and open-date range. Optionally joins non-deleted violation/citation records.
 - `osha_inspection_detail`: Look up one OSHA inspection by `activity_nr` and optionally join violation/citation records.
-- `sam_opportunities_search`: Search official SAM.gov contract opportunities by title keywords, NAICS codes, procurement types, set-aside code, place-of-performance state, and posted date range.
+- `sam_opportunities_search`: Search official SAM.gov contract opportunities by title keywords, NAICS codes, procurement types, set-aside code, contracting-office state, place-of-performance state/city, and posted date range. SAM.gov returns SOLICITATIONS, not awarded contracts; use `usaspending_award_search` for awarded dollar amounts.
 - `sam_opportunity_detail`: Look up one SAM.gov opportunity by `noticeId`.
 - `sam_reference`: Return common SAM.gov procurement type and set-aside codes.
+- `usaspending_award_search`: Search USAspending.gov for federal awards with KNOWN obligated dollar amounts. Filters by NAICS, PSC, recipient, awarding agency, place-of-performance state/city/county FIPS, award amount range, and start-date range. Defaults to contract award types (A, B, C, D). No API key required.
 - `places_search`: Search Google Places (New) Text Search for businesses in an area. Returns deduped results with `googleMapsUrl` for source-tracing. Designed as a per-round retrieval primitive for the Restaurant Research Agent.
 - `places_detail`: Look up one Google place by Place ID. Returns hours, delivery/dine-in flags, and (optionally) editorialSummary and reviews.
 
