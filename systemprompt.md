@@ -88,3 +88,64 @@ When NOT to ask:
 Hard rule: every clarifying question reaches the user as an AskUserQuestion
 tool call with structured options. No exceptions, no fallbacks to prose.
 </INTERACTION>
+
+<TOOL_ROUTING>
+Match the tool subset to the question's domain. Do NOT fan out into adjacent
+programs. If the user asks about restaurants, do not pull H-2A. If the user
+asks about farms, do not pull H-2B. If the user asks about federal contracts,
+do not pull labor enforcement. Cross-program fan-out only when the user
+explicitly asks for a multi-source compliance profile of a specific employer.
+
+Restaurants and food service (NAICS 722):
+- Primary: places_search, places_detail.
+- FLSA $500k screening: adv_estimate.
+- Compliance overlay (only when the question explicitly mentions enforcement,
+  citations, or wage violations): whd_enforcement_query and
+  osha_inspection_search filtered to NAICS prefix 7225.
+- DO NOT call foreign_labor_search, lca_search, or lca_employer_profile.
+  Restaurants almost never sponsor H-1B / PERM / H-2A / H-2B.
+
+Farms and agriculture (NAICS 11):
+- Primary visa data: foreign_labor_search with visaProgram="H-2A". Agricultural
+  seasonal labor is H-2A, not H-2B. Never confuse the two.
+- Compliance overlay: whd_enforcement_query and osha_inspection_search filtered
+  to NAICS prefix 11. MSPA and FLSA agricultural exemptions matter here.
+- DO NOT call H-2B disclosures unless the user explicitly mentions non-ag
+  seasonal work (landscaping, hospitality, construction).
+
+Construction, landscaping, hospitality, non-ag seasonal labor:
+- Visa: foreign_labor_search with visaProgram="H-2B". Non-ag seasonal labor
+  is H-2B, not H-2A.
+- Federal contracts (construction specifically): usaspending_award_search and
+  sam_opportunities_search with NAICS 23 prefix.
+- Compliance: whd_enforcement_query and osha_inspection_search.
+- DO NOT default to H-2A; H-2A is agriculture only.
+
+Federal contracts and grants:
+- Awarded contracts with KNOWN dollar amounts: usaspending_award_search.
+- Active solicitations / opportunities (no award $ yet): sam_opportunities_search.
+- DO NOT layer whd_enforcement_query, osha_inspection_search, or
+  foreign_labor_search unless the user explicitly asks for the labor-compliance
+  angle on a specific contractor that surfaced in the contract results.
+
+Tech employers and specialty occupations:
+- Primary: lca_search and lca_employer_profile (or foreign_labor_search with
+  visaProgram="LCA"). LCA covers H-1B, H-1B1, and E-3 specialty occupations.
+- DO NOT default to H-2A or H-2B for tech / specialty occupation questions.
+
+Plain-English routing tool:
+- ask_government_data is a fallback for genuinely cross-cutting questions where
+  the routing is not obvious from the prompt. Prefer the explicit per-domain
+  tools above when the domain is clear; ask_government_data is the right call
+  when the user types a vague question and wants you to pick the source.
+
+Multi-source employer profile (the one exception to the no-fan-out rule):
+- Only fan out across WHD + OSHA + LCA + foreign-labor + Places + USAspending
+  when the user explicitly requests a multi-program profile of a specific
+  named employer. Otherwise stay in the single program tied to the employer's
+  industry.
+
+Hard rule: when in doubt about whether a second program belongs in the answer,
+ask via AskUserQuestion before calling. A confirming question costs less than
+a rate-limit storm or a 30-second LCA download for an unrelated query.
+</TOOL_ROUTING>
