@@ -127,6 +127,7 @@ Claude.ai's mobile app shares Custom Connectors with the web UI, so adding the r
 - `places_search`: Search Google Places (New) Text Search for businesses in an area. Returns deduped results with `googleMapsUrl` for source-tracing. Designed as a per-round retrieval primitive for the Restaurant Research Agent.
 - `places_detail`: Look up one Google place by Place ID. Returns hours, delivery/dine-in flags, and (optionally) editorialSummary and reviews.
 - `adv_estimate`: Deterministic Annual Dollar Volume calculator for FLSA $500k enterprise-coverage screening. Encodes Methods 1-4 (per-employee, per-seat, chain per-unit, format default), the geographic cost-of-living multiplier, +/-40% range, and the FLSA flag (Above / Below / Borderline / Insufficient Data). Screening signal only; not a coverage determination.
+- `census_area_profile`: Resolve a US city/town/CDP to total population (ACS 5-year), area tier (`major_metro` / `mid_metro` / `small_or_rural`), row-scaling tier and target (matching the Restaurant Research Agent's `max(pop/250, floor)` formula), county FIPS for follow-on `usaspending_award_search`, and the high-cost-of-living-state flag. Pairs with `adv_estimate` for end-to-end research workflows.
 
 LCA tools use official OFLC disclosure workbooks from the DOL Performance Data page. The workbooks can be large, so downloaded files are cached under `.cache/dol-lca/`. You can also pass `localFile` with an already-downloaded official LCA disclosure XLSX file.
 

@@ -12,6 +12,7 @@ import { GooglePlacesClient, PlacesDetailInput, PlacesSearchInput } from "./plac
 import { SamGovClient, SamOpportunityDetailInput, SamOpportunitySearchInput } from "./sam.js";
 import { UsaSpendingAwardSearchInput, UsaSpendingClient } from "./usaspending.js";
 import { AdvEstimateInput, estimateAdv } from "./adv.js";
+import { CensusAreaProfileInput, CensusClient } from "./census.js";
 
 export interface MetadataInput {
   search?: string;
@@ -32,6 +33,7 @@ export function createToolHandlers(
   foreignLaborClient = new ForeignLaborDisclosureClient(),
   placesClient = new GooglePlacesClient(),
   usaSpendingClient = new UsaSpendingClient(),
+  censusClient = new CensusClient(),
 ) {
   return {
     queryEnforcement: async (input: EnforcementQueryInput = {}) => {
@@ -179,6 +181,10 @@ export function createToolHandlers(
 
     estimateAdv: async (input: AdvEstimateInput) => {
       return estimateAdv(input);
+    },
+
+    getCensusAreaProfile: async (input: CensusAreaProfileInput) => {
+      return await censusClient.getAreaProfile(input);
     },
 
     searchPlaces: async (input: PlacesSearchInput) => {

@@ -443,6 +443,24 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
   );
 
   server.registerTool(
+    "census_area_profile",
+    {
+      title: "Resolve US Place to Population, Area Tier, and Multiplier Base",
+      description:
+        "Look up a US city/town/CDP via the Census geocoder, then fetch its total population from the ACS 5-year estimate. Returns: total population, area tier (major_metro / mid_metro / small_or_rural matching the adv_estimate multiplier table), row-scaling tier and target (matching the Restaurant Research Agent's row-scaling formula max(pop/250, floor)), county FIPS for usaspending_award_search, state FIPS, place FIPS, and the high-cost-of-living-state flag for CA/NY/MA/WA/HI. Use this BEFORE adv_estimate when sizing an enforcement universe or running a restaurant research workflow against an unfamiliar city. Free Census API; no key required for basic queries.",
+      inputSchema: {
+        city: z.string().optional().describe("US city / town / place name. Pair with `state`. Example: 'Hillsdale'."),
+        state: z.string().optional().describe("USPS two-letter state code. Pair with `city`. Example: 'MI'."),
+        placeFips: z.string().optional().describe("Direct Census place FIPS. Pair with `stateFips` to skip the geocoder entirely."),
+        stateFips: z.string().optional().describe("Direct Census state FIPS (e.g. '26' for Michigan). Pair with `placeFips`."),
+        acsYear: z.number().int().min(2010).max(2030).optional().describe("ACS 5-year vintage to query. Defaults to 2022."),
+        dryRun: z.boolean().optional().describe("Return a sample Hillsdale, MI profile without calling the Census API."),
+      },
+    },
+    async (args) => toTextResult(await handlers.getCensusAreaProfile(args)),
+  );
+
+  server.registerTool(
     "adv_estimate",
     {
       title: "Estimate Annual Dollar Volume (ADV) and FLSA $500K Coverage Flag",
