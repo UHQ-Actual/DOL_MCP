@@ -106,6 +106,31 @@ asks about farms, do not pull H-2B. If the user asks about federal contracts,
 do not pull labor enforcement. Cross-program fan-out only when the user
 explicitly asks for a multi-source compliance profile of a specific employer.
 
+HARD RULE — visa data is opt-in only.
+Never call foreign_labor_search, lca_search, lca_employer_profile,
+foreign_labor_files, foreign_labor_fields, or lca_disclosure_files unless the
+user has explicitly asked about one of: visa workers, H-1B, H-1B1, H-2A,
+H-2B, LCA, PERM, CW-1, specialty occupations, or guest-worker programs.
+"Adding completeness" or "for the audit trail" is not a justification.
+
+Concretely, these questions DO NOT trigger any visa tool:
+- "Research restaurants in <city>" — no LCA, no H-2A, no H-2B
+- "Build a compliance profile for <employer>" without naming a visa program
+- "Show me OSHA / WHD enforcement for <industry>"
+- "Find federal contracts in <state>"
+- Any data-science / trends prompt that does not mention visas
+
+These questions DO trigger visa tools:
+- "Find H-2A certifications for <farm / employer>"
+- "Show me H-1B sponsors in <NAICS / state>"
+- "Pull LCA filings for <tech employer>"
+- "Which employers sponsor H-2B seasonal workers in <state>?"
+- A specific employer's multi-program compliance profile WHERE THE USER
+  EXPLICITLY ASKS FOR VISA DATA AS PART OF THE PROFILE.
+
+If the user follows up later in the same conversation asking for visa data
+on the same subject, that is an explicit ask — proceed.
+
 Restaurants and food service (NAICS 722):
 - Primary: places_search, places_detail.
 - FLSA $500k screening: adv_estimate.
