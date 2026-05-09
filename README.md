@@ -316,3 +316,10 @@ Look up one Google place by Place ID:
   "includeAtmosphere": false
 }
 ```
+
+## Data Source Reference
+
+Background reference for sources the MCP queries (and a few it doesn't yet but agents may need to reach):
+
+- [Midwest State OSHA Programs](docs/data-sources/state-osha-programs.md) — federal vs state-plan jurisdiction map for IL, IN, IA, KS, MI, MN, MO, NE, OH, WI; how state-plan reporting cadence affects `osha_inspection_search` results; what the federal OIS does and doesn't cover.
+- [Midwest State Business Registration Searches](docs/data-sources/state-business-registration.md) — Secretary of State / DFI portals, free search vs. paid bulk download, registered-agent and officer searches; IL, IN, IA, KS, MI, MN, MO, NE, OH, WI.

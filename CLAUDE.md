@@ -134,6 +134,8 @@ Keys resolve via `src/env.ts` in this order:
 ## Companion docs
 
 - `INFO.md` — Spec for the Restaurant Research Agent (Claude Project) that uses `places_search` as its Pass 2 retrieval primitive. Source-tracing requirement (`googleMapsUrl` per row) drives the Places field mask.
+- `docs/data-sources/state-osha-programs.md` — Federal vs state-plan OSHA jurisdiction map for the 10 Midwest states; explains why `osha_inspection_search` data lags 1-3 months in state-plan states (MI/MN/IA/IN) and what's missing entirely (injury logs, narratives).
+- `docs/data-sources/state-business-registration.md` — Midwest Secretary of State / DFI business-entity portals; free search vs paid bulk; registered-agent and officer search availability per state. Reference for any future business_entity_search tool.
 - `docs/superpowers/specs/2026-05-06-google-places-restaurant-research-design.md`
 - `docs/superpowers/plans/2026-05-06-google-places-tools.md`
 - `README.md` — User-facing tool reference and usage examples.
