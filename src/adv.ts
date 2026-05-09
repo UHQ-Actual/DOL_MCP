@@ -4,6 +4,12 @@ export type AreaType = "major_metro" | "mid_metro" | "small_or_rural";
 export type AdvMethod = 1 | 2 | 3 | 4;
 export type AdvConfidence = "Medium" | "Low" | "Very Low";
 export type FlsaFlag = "Above" | "Below" | "Borderline" | "Insufficient Data";
+export type CapacityInputType =
+  | "seat_count"
+  | "occupant_load"
+  | "square_footage"
+  | "parking_count"
+  | "none";
 
 export type FormatKey =
   | "fast_food_or_counter"
@@ -21,13 +27,23 @@ export interface AdvEstimateInput {
   serviceType?: ServiceType;
   format?: string;
   chainFlag?: ChainFlag;
+
   employeeCount?: number;
+  listPageEmployeeData?: boolean;
+
   seatCount?: number;
+  occupantLoad?: number;
+  squareFootage?: number;
+  parkingSpaces?: number;
+  capacitySource?: string;
+  bohRatio?: number;
+  parkingRatio?: number;
+
   chainPerUnitAdv?: number;
+
   areaType?: AreaType;
   highCostOfLivingState?: boolean;
   staleSources?: boolean;
-  listPageEmployeeData?: boolean;
 }
 
 export interface AdvRange {
@@ -42,14 +58,16 @@ export interface AdvEstimateResult {
   range: AdvRange | null;
   flsaFlag: FlsaFlag;
   confidence: AdvConfidence | null;
+  capacityInput: CapacityInputType;
+  capacitySource: string | null;
+  derivedSeatCount: number | null;
   appliedMultiplier: number;
   multiplierBreakdown: {
     base: number;
     highCostOfLivingState: boolean;
   };
   formatKey: FormatKey | null;
-  inputsSummary: string;
-  advNotes: string;
+  notes: string;
   warnings: string[];
 }
 
@@ -88,6 +106,11 @@ const FORMAT_DEFAULT_ADV: Record<FormatKey, number> = {
 const FLSA_THRESHOLD = 500000;
 const RANGE_LOW_FACTOR = 0.6;
 const RANGE_HIGH_FACTOR = 1.4;
+const SQ_FT_PER_OCCUPANT_DINING = 15;
+const OCCUPANT_LOAD_TO_SEAT_FACTOR = 0.85;
+const DEFAULT_BOH_RATIO_FSR = 0.3;
+const DEFAULT_BOH_RATIO_LSR = 0.4;
+const DEFAULT_BOH_RATIO_UNCLEAR = 0.35;
 
 export function estimateAdv(input: AdvEstimateInput): AdvEstimateResult {
   const warnings: string[] = [];
@@ -107,27 +130,36 @@ export function estimateAdv(input: AdvEstimateInput): AdvEstimateResult {
       range: null,
       flsaFlag: "Insufficient Data",
       confidence: null,
+      capacityInput: "none",
+      capacitySource: input.capacitySource ?? null,
+      derivedSeatCount: null,
       appliedMultiplier,
       multiplierBreakdown,
       formatKey,
-      inputsSummary: "no employee count, no seat count, no chain per-unit ADV, no format",
-      advNotes: "FLSA: Insufficient Data; Range: --; Method: --; Inputs: insufficient data to estimate",
-      warnings: ["Provide at least one of employeeCount, seatCount, chainPerUnitAdv, or format."],
+      notes: "Insufficient data: provide at least one of employeeCount, capacity input (seatCount/occupantLoad/squareFootage/parkingSpaces), chainPerUnitAdv, or format.",
+      warnings: ["Provide at least one of employeeCount, capacity input, chainPerUnitAdv, or format."],
     };
   }
 
-  const calc = computeEstimate(method, input, formatKey, appliedMultiplier, warnings);
+  const capacity = method === 2
+    ? deriveCapacity(input, formatKey, warnings)
+    : { seats: null as number | null, capacityInput: "none" as CapacityInputType };
+
+  const calc = computeEstimate(method, input, formatKey, capacity.seats, appliedMultiplier, warnings);
   const range: AdvRange = {
     low: Math.round(calc.estimate * RANGE_LOW_FACTOR),
     high: Math.round(calc.estimate * RANGE_HIGH_FACTOR),
   };
   const flsaFlag = computeFlsaFlag(range);
-  const confidence = computeConfidence(method, input);
+  const confidence = computeConfidence(method, input, capacity.capacityInput);
 
-  const advNotes = buildAdvNotes({
-    flsaFlag,
-    range,
+  const notes = buildNotes({
     method,
+    capacityInput: capacity.capacityInput,
+    capacitySource: input.capacitySource ?? null,
+    derivedSeatCount: capacity.seats,
+    multiplier: appliedMultiplier,
+    multiplierBreakdown,
     inputsSummary: calc.inputsSummary,
     chainFlag: input.chainFlag,
     staleSources: Boolean(input.staleSources),
@@ -140,11 +172,13 @@ export function estimateAdv(input: AdvEstimateInput): AdvEstimateResult {
     range,
     flsaFlag,
     confidence,
+    capacityInput: capacity.capacityInput,
+    capacitySource: input.capacitySource ?? null,
+    derivedSeatCount: capacity.seats,
     appliedMultiplier,
     multiplierBreakdown,
     formatKey,
-    inputsSummary: calc.inputsSummary,
-    advNotes,
+    notes,
     warnings,
   };
 }
@@ -152,20 +186,79 @@ export function estimateAdv(input: AdvEstimateInput): AdvEstimateResult {
 function selectMethod(input: AdvEstimateInput, formatKey: FormatKey | null): AdvMethod | null {
   if (input.chainFlag === "Yes" && isPositiveFinite(input.chainPerUnitAdv)) return 3;
   if (isPositiveFinite(input.employeeCount)) return 1;
-  if (isPositiveFinite(input.seatCount) && formatKey && SEAT_BENCHMARK[formatKey]) return 2;
+  if (hasCapacityInput(input) && formatKey && SEAT_BENCHMARK[formatKey]) return 2;
   if (formatKey) return 4;
   return null;
+}
+
+function hasCapacityInput(input: AdvEstimateInput): boolean {
+  return (
+    isPositiveFinite(input.seatCount) ||
+    isPositiveFinite(input.occupantLoad) ||
+    isPositiveFinite(input.squareFootage) ||
+    isPositiveFinite(input.parkingSpaces)
+  );
+}
+
+function deriveCapacity(
+  input: AdvEstimateInput,
+  formatKey: FormatKey | null,
+  warnings: string[],
+): { seats: number; capacityInput: CapacityInputType } {
+  if (isPositiveFinite(input.seatCount)) {
+    return { seats: Math.round(input.seatCount as number), capacityInput: "seat_count" };
+  }
+  if (isPositiveFinite(input.occupantLoad)) {
+    return {
+      seats: Math.round((input.occupantLoad as number) * OCCUPANT_LOAD_TO_SEAT_FACTOR),
+      capacityInput: "occupant_load",
+    };
+  }
+  if (isPositiveFinite(input.squareFootage)) {
+    const bohRatio = isValidBohRatio(input.bohRatio) ? (input.bohRatio as number) : defaultBohRatio(input.serviceType);
+    const dining = (input.squareFootage as number) * (1 - bohRatio);
+    const maxOccupants = dining / SQ_FT_PER_OCCUPANT_DINING;
+    return {
+      seats: Math.round(maxOccupants * OCCUPANT_LOAD_TO_SEAT_FACTOR),
+      capacityInput: "square_footage",
+    };
+  }
+  if (isPositiveFinite(input.parkingSpaces)) {
+    const ratio = isPositiveFinite(input.parkingRatio)
+      ? (input.parkingRatio as number)
+      : defaultParkingRatio(formatKey, input.serviceType);
+    return {
+      seats: Math.round((input.parkingSpaces as number) * ratio),
+      capacityInput: "parking_count",
+    };
+  }
+  warnings.push("Method 2 selected without any capacity input; selectMethod is broken.");
+  return { seats: 0, capacityInput: "none" };
+}
+
+function defaultBohRatio(serviceType?: ServiceType): number {
+  if (serviceType === "FSR") return DEFAULT_BOH_RATIO_FSR;
+  if (serviceType === "LSR") return DEFAULT_BOH_RATIO_LSR;
+  return DEFAULT_BOH_RATIO_UNCLEAR;
+}
+
+function defaultParkingRatio(formatKey: FormatKey | null, serviceType?: ServiceType): number {
+  if (formatKey === "bar_grill") return 1.75;
+  if (formatKey === "fine_dining" || formatKey === "casual_dining") return 2.75;
+  if (formatKey === "fast_food_or_counter" || formatKey === "fast_casual") return 2.25;
+  if (serviceType === "FSR") return 2.75;
+  if (serviceType === "LSR") return 2.25;
+  return 2.5;
 }
 
 function computeEstimate(
   method: AdvMethod,
   input: AdvEstimateInput,
   formatKey: FormatKey | null,
+  derivedSeats: number | null,
   multiplier: number,
   warnings: string[],
 ): { estimate: number; inputsSummary: string } {
-  const multiplierLabel = formatMultiplier(multiplier);
-
   if (method === 1) {
     const serviceType = input.serviceType ?? "Unclear";
     if (!input.serviceType) {
@@ -175,7 +268,7 @@ function computeEstimate(
     const estimate = (input.employeeCount as number) * benchmark * multiplier;
     return {
       estimate,
-      inputsSummary: `${input.employeeCount} employees @ $${benchmark.toLocaleString()}/employee/yr (${serviceType}), ${multiplierLabel} multiplier`,
+      inputsSummary: `${input.employeeCount} employees × $${benchmark.toLocaleString()}/yr (${serviceType})`,
     };
   }
 
@@ -183,11 +276,14 @@ function computeEstimate(
     if (!formatKey || !SEAT_BENCHMARK[formatKey]) {
       throw new Error("Method 2 selected without a seat-eligible format; selectMethod is broken.");
     }
+    if (derivedSeats === null || derivedSeats <= 0) {
+      throw new Error("Method 2 selected but no derived seat count; deriveCapacity is broken.");
+    }
     const seatBench = SEAT_BENCHMARK[formatKey]!;
-    const estimate = (input.seatCount as number) * seatBench.revPerSeatPerDay * seatBench.daysPerYear * multiplier;
+    const estimate = derivedSeats * seatBench.revPerSeatPerDay * seatBench.daysPerYear * multiplier;
     return {
       estimate,
-      inputsSummary: `${input.seatCount} seats × $${seatBench.revPerSeatPerDay}/seat/day × ${seatBench.daysPerYear} days/yr (${formatKey}), ${multiplierLabel} multiplier`,
+      inputsSummary: `${derivedSeats} seats × $${seatBench.revPerSeatPerDay}/seat/day × ${seatBench.daysPerYear} days/yr (${formatKey})`,
     };
   }
 
@@ -195,19 +291,16 @@ function computeEstimate(
     const estimate = (input.chainPerUnitAdv as number) * multiplier;
     return {
       estimate,
-      inputsSummary: `chain per-unit ADV $${(input.chainPerUnitAdv as number).toLocaleString()}, ${multiplierLabel} multiplier`,
+      inputsSummary: `chain per-unit ADV $${(input.chainPerUnitAdv as number).toLocaleString()}`,
     };
   }
 
-  // Method 4
-  if (!formatKey) {
-    throw new Error("Method 4 selected without a format; selectMethod is broken.");
-  }
+  if (!formatKey) throw new Error("Method 4 without format");
   const def = FORMAT_DEFAULT_ADV[formatKey];
   const estimate = def * multiplier;
   return {
     estimate,
-    inputsSummary: `format default $${def.toLocaleString()} for ${formatKey}, ${multiplierLabel} multiplier`,
+    inputsSummary: `format default $${def.toLocaleString()} for ${formatKey}`,
   };
 }
 
@@ -217,37 +310,43 @@ function computeFlsaFlag(range: AdvRange): FlsaFlag {
   return "Borderline";
 }
 
-function computeConfidence(method: AdvMethod, input: AdvEstimateInput): AdvConfidence {
+function computeConfidence(method: AdvMethod, input: AdvEstimateInput, capacityInput: CapacityInputType): AdvConfidence {
   if (input.staleSources) return "Very Low";
   if (method === 4) return "Very Low";
-  if (method === 2) return "Low";
   if (method === 1 && input.listPageEmployeeData) return "Low";
+  if (method === 2) {
+    if (capacityInput === "seat_count") return "Medium";
+    if (capacityInput === "occupant_load") return "Medium";
+    if (capacityInput === "square_footage") return "Low";
+    if (capacityInput === "parking_count") return "Very Low";
+    return "Low";
+  }
   return "Medium";
 }
 
-function buildAdvNotes(opts: {
-  flsaFlag: FlsaFlag;
-  range: AdvRange;
+function buildNotes(opts: {
   method: AdvMethod;
+  capacityInput: CapacityInputType;
+  capacitySource: string | null;
+  derivedSeatCount: number | null;
+  multiplier: number;
+  multiplierBreakdown: { base: number; highCostOfLivingState: boolean };
   inputsSummary: string;
   chainFlag?: ChainFlag;
   staleSources: boolean;
 }): string {
-  const parts = [
-    `FLSA: ${opts.flsaFlag}`,
-    `Range: $${formatMoney(opts.range.low)}-$${formatMoney(opts.range.high)}`,
-    `Method: ${opts.method}`,
-    `Inputs: ${opts.inputsSummary}`,
-  ];
-  if (opts.chainFlag === "Yes") {
-    parts.push("Enterprise coverage may apply regardless of single-unit estimate");
+  const parts: string[] = [];
+  parts.push(`Method ${opts.method}`);
+  if (opts.method === 2 && opts.capacityInput !== "none") {
+    const sourceLabel = opts.capacitySource ? ` (${opts.capacitySource})` : "";
+    parts.push(`capacity=${opts.capacityInput}${sourceLabel}, ${opts.derivedSeatCount} seats`);
   }
-  if (opts.method === 4) {
-    parts.push("Default: no per-unit data");
-  }
-  if (opts.staleSources) {
-    parts.push("Stale listing");
-  }
+  parts.push(opts.inputsSummary);
+  const baseTier = opts.multiplierBreakdown.base === 1.2 ? "major_metro" : opts.multiplierBreakdown.base === 0.85 ? "small_or_rural" : "mid_metro";
+  parts.push(`multiplier ${formatMultiplier(opts.multiplier)} (${baseTier}${opts.multiplierBreakdown.highCostOfLivingState ? " + high-COL" : ""})`);
+  if (opts.chainFlag === "Yes") parts.push("enterprise coverage may apply regardless of single-unit estimate");
+  if (opts.method === 4) parts.push("default: no per-unit data");
+  if (opts.staleSources) parts.push("stale listing");
   return parts.join("; ");
 }
 
@@ -277,18 +376,10 @@ function formatMultiplier(multiplier: number): string {
   return multiplier.toFixed(2).replace(/\.?0+$/, "") + "×";
 }
 
-function formatMoney(value: number): string {
-  if (value >= 1_000_000) {
-    const m = value / 1_000_000;
-    const trimmed = m.toFixed(2).replace(/\.?0+$/, "");
-    return `${trimmed}M`;
-  }
-  if (value >= 1_000) {
-    return `${Math.round(value / 1_000)}k`;
-  }
-  return `${value}`;
-}
-
 function isPositiveFinite(value: number | undefined): boolean {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isValidBohRatio(value: number | undefined): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value < 1;
 }

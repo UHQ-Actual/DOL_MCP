@@ -465,12 +465,12 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
     {
       title: "Estimate Annual Dollar Volume (ADV) and FLSA $500K Coverage Flag",
       description:
-        "Deterministic ADV screening calculator for FLSA enterprise-coverage triage. Encodes Methods 1-4 (per-employee, per-seat, chain per-unit, format default), the geographic cost-of-living multiplier, +/-40% range math, and the $500,000 FLSA flag (Above / Below / Borderline / Insufficient Data). NOT a coverage determination — screening signal only. Method selection: chain per-unit ADV beats employee count beats seat count beats format default. Returns estimate, range, FLSA flag, confidence, applied multiplier, and a structured advNotes line ready to drop into a research table.",
+        "Deterministic ADV screening calculator for FLSA enterprise-coverage triage. Encodes Methods 1-4 (per-employee, capacity-derived, chain per-unit, format default), the geographic multiplier, ±40% range math, and the $500,000 FLSA flag (Above / Below / Borderline / Insufficient Data). NOT a coverage determination — screening signal only. Method selection priority: chain per-unit ADV > employee count > capacity input > format default. Method 2 capacity input priority (highest first): seatCount > occupantLoad (×0.85 → seats) > squareFootage (BOH subtract + IBC 15-sqft-per-occupant + ×0.85) > parkingSpaces (× format-typical seats-per-space). Always pass capacitySource so the audit trail records where the number came from. Best practice: harvest employeeCount from osha_inspection_search when an OSHA inspection record exists for the establishment (employee_count is a required OSHA field). Returns separate columns for estimate, range, method, capacity_input, capacity_source, flsa_flag, confidence, and a derivation-chain notes string.",
       inputSchema: {
         serviceType: z
           .enum(["LSR", "FSR", "Unclear"])
           .optional()
-          .describe("Service type. Required for Method 1 per-employee benchmarks. Defaults to Unclear ($67k/employee) if omitted."),
+          .describe("Service type. Required for Method 1 per-employee benchmarks; also drives default BOH ratio for square-footage derivation (FSR=30%, LSR=40%, Unclear=35%). Defaults to Unclear if omitted."),
         format: z
           .string()
           .optional()
@@ -478,26 +478,60 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
         chainFlag: z
           .enum(["Yes", "No", "Unknown"])
           .optional()
-          .describe("Whether the establishment is part of a multi-location brand. Drives Method 3 selection and adds the enterprise-coverage caveat to advNotes when Yes."),
-        employeeCount: z.number().positive().optional().describe("Total employees at the single establishment. Triggers Method 1 (per-employee)."),
-        seatCount: z.number().positive().optional().describe("Total dining seats. Triggers Method 2 (per-seat) when employeeCount is absent."),
+          .describe("Whether the establishment is part of a multi-location brand. Drives Method 3 selection and adds the enterprise-coverage caveat to notes when Yes."),
+        employeeCount: z.number().positive().optional().describe("Total employees at the single establishment. Triggers Method 1 (per-employee). Look in osha_inspection_search results first — OSHA records always include employee count."),
+        listPageEmployeeData: z
+          .boolean()
+          .optional()
+          .describe("Set true when employeeCount came from a list/aggregator page rather than a direct profile or OSHA record. Caps Method 1 confidence at Low."),
+        seatCount: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Direct dining seat count. Highest-confidence Method 2 capacity input. Sources: published menu, OpenTable / Resy / Tock inventory, owner interviews, news articles. Confidence: Medium."),
+        occupantLoad: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Posted maximum occupant load from Certificate of Occupancy, fire marshal permit, or ABC license. Tool applies 0.85 conversion to seated capacity (accounts for staff, BOH, standing). Used only when seatCount is absent. Confidence: Medium."),
+        squareFootage: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Total establishment square footage from county assessor, real estate listing (LoopNet/Crexi), CO, or building permit. Tool subtracts BOH (default 30% FSR / 40% LSR / 35% Unclear), divides remaining dining area by 15 sqft per occupant (IBC A-2 standard), then multiplies by 0.85 for seated capacity. Used only when seatCount and occupantLoad are absent. Confidence: Low."),
+        parkingSpaces: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Striped parking spaces from satellite imagery or zoning permit. Tool multiplies by format-typical seats-per-space (FSR/casual/fine 2.75; LSR/fast 2.25; bar 1.75). Last-resort capacity input — only when no other capacity data is available. Confidence: Very Low."),
+        capacitySource: z
+          .string()
+          .optional()
+          .describe("Free-text label for where the capacity number came from. Recommended values: 'assessor', 'CO', 'fire_marshal', 'ABC', 'health_permit', 'OSHA', 'OpenTable', 'Resy', 'LoopNet', 'Crexi', 'real_estate_listing', 'satellite', 'photos', 'news_article', 'owner_interview', 'zoning_permit', 'format_default'. Echoed in the notes field for audit."),
+        bohRatio: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe("Override the default back-of-house fraction (0.30 FSR / 0.40 LSR / 0.35 Unclear) for square-footage derivation. Use when you have a verified BOH split."),
+        parkingRatio: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Override the default seats-per-parking-space ratio (FSR 2.75, LSR 2.25, bar 1.75). Use only when local zoning specifies a different ratio."),
         chainPerUnitAdv: z
           .number()
           .positive()
           .optional()
-          .describe("Brand-reported per-unit annual sales (from FDD or industry report). Triggers Method 3 when chainFlag is Yes; takes precedence over Methods 1 and 2."),
+          .describe("Brand-reported per-unit annual sales (from Franchise Disclosure Document or industry report). Triggers Method 3 when chainFlag is Yes; takes precedence over Methods 1 and 2."),
         areaType: z
           .enum(["major_metro", "mid_metro", "small_or_rural"])
           .optional()
-          .describe("Area tier for the cost-of-living multiplier. major_metro = 1.20×; mid_metro = 1.00× (default); small_or_rural = 0.85×."),
+          .describe("Area tier for the cost-of-living multiplier. major_metro = 1.20×; mid_metro = 1.00× (default); small_or_rural = 0.85×. Get this from census_area_profile."),
         highCostOfLivingState: z
           .boolean()
           .optional()
-          .describe("Add +0.10 to the area multiplier for CA, NY, MA, WA, or HI."),
-        listPageEmployeeData: z
-          .boolean()
-          .optional()
-          .describe("Set true when employeeCount came from a list/aggregator page rather than a direct profile. Caps Method 1 confidence at Low."),
+          .describe("Add +0.10 to the area multiplier for CA, NY, MA, WA, or HI. Get this from census_area_profile."),
         staleSources: z
           .boolean()
           .optional()
