@@ -6,7 +6,12 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { DolApiClient } from "./dolApi.js";
-import { loadDolApiKey, loadGooglePlacesApiKey, loadSamApiKey } from "./env.js";
+import {
+  loadDolApiKey,
+  loadGooglePlacesApiKey,
+  loadOpenCorporatesApiKey,
+  loadSamApiKey,
+} from "./env.js";
 import { createServer as createMcpServer } from "./server.js";
 
 export interface HttpConfig {
@@ -126,7 +131,7 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 
 function createConfiguredMcpServer(): McpServer {
   const client = new DolApiClient({ apiKey: loadDolApiKey() });
-  return createMcpServer(client, loadSamApiKey(), loadGooglePlacesApiKey());
+  return createMcpServer(client, loadSamApiKey(), loadGooglePlacesApiKey(), loadOpenCorporatesApiKey());
 }
 
 function setCorsHeaders(res: ServerResponse, config: HttpConfig): void {

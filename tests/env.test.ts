@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadDolApiKey, loadGooglePlacesApiKey, loadSamApiKey } from "../src/env.js";
+import { loadDolApiKey, loadGooglePlacesApiKey, loadOpenCorporatesApiKey, loadSamApiKey } from "../src/env.js";
 
 test("loads DOL_API_KEY from an explicit env file without printing it", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dol-whd-mcp-"));
@@ -79,6 +79,21 @@ test("loadGooglePlacesApiKey reads from env file when env var is missing", async
     const envFile = join(dir, ".env");
     await writeFile(envFile, "GOOGLE_PLACES_API_KEY=file-places-key\n");
     assert.equal(loadGooglePlacesApiKey({ envFile, env: {} }), "file-places-key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadOpenCorporatesApiKey returns key from env, env file, or undefined", async () => {
+  assert.equal(loadOpenCorporatesApiKey({ env: { OPENCORPORATES_API_KEY: "env-token" }, envFile: "missing.env" }), "env-token");
+  assert.equal(loadOpenCorporatesApiKey({ env: {}, envFile: "missing.env" }), undefined);
+  assert.equal(loadOpenCorporatesApiKey({ env: { OPENCORPORATES_API_KEY: ' "abc" ' }, envFile: "missing.env" }), "abc");
+
+  const dir = await mkdtemp(join(tmpdir(), "dol-whd-mcp-"));
+  try {
+    const envFile = join(dir, ".env");
+    await writeFile(envFile, "OPENCORPORATES_API_KEY=file-token\n");
+    assert.equal(loadOpenCorporatesApiKey({ envFile, env: {} }), "file-token");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

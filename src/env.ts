@@ -75,6 +75,28 @@ export function loadGooglePlacesApiKey(options: LoadDolApiKeyOptions = {}): stri
   return undefined;
 }
 
+export function loadOpenCorporatesApiKey(options: LoadDolApiKeyOptions = {}): string | undefined {
+  const env = options.env ?? process.env;
+  const direct = normalizeKey(env.OPENCORPORATES_API_KEY);
+  if (direct) {
+    return direct;
+  }
+
+  for (const envFile of envFileCandidates(options.envFile, env.DOL_MCP_ENV_FILE)) {
+    if (!existsSync(envFile)) {
+      continue;
+    }
+
+    const parsed = parse(readFileSync(envFile));
+    const key = normalizeKey(parsed.OPENCORPORATES_API_KEY);
+    if (key) {
+      return key;
+    }
+  }
+
+  return undefined;
+}
+
 function envFileCandidates(explicitFile?: string, envFile?: string): string[] {
   if (explicitFile) {
     return [explicitFile];

@@ -13,6 +13,11 @@ import { SamGovClient, SamOpportunityDetailInput, SamOpportunitySearchInput } fr
 import { UsaSpendingAwardSearchInput, UsaSpendingClient } from "./usaspending.js";
 import { AdvEstimateInput, estimateAdv } from "./adv.js";
 import { CensusAreaProfileInput, CensusClient } from "./census.js";
+import {
+  OpenCorporatesClient,
+  OpenCorporatesDetailInput,
+  OpenCorporatesSearchInput,
+} from "./openCorporates.js";
 
 export interface MetadataInput {
   search?: string;
@@ -34,6 +39,7 @@ export function createToolHandlers(
   placesClient = new GooglePlacesClient(),
   usaSpendingClient = new UsaSpendingClient(),
   censusClient = new CensusClient(),
+  openCorporatesClient = new OpenCorporatesClient(),
 ) {
   return {
     queryEnforcement: async (input: EnforcementQueryInput = {}) => {
@@ -185,6 +191,14 @@ export function createToolHandlers(
 
     getCensusAreaProfile: async (input: CensusAreaProfileInput) => {
       return await censusClient.getAreaProfile(input);
+    },
+
+    searchBusinessEntity: async (input: OpenCorporatesSearchInput) => {
+      return await openCorporatesClient.search(input);
+    },
+
+    getBusinessEntity: async (input: OpenCorporatesDetailInput) => {
+      return await openCorporatesClient.detail(input);
     },
 
     searchPlaces: async (input: PlacesSearchInput) => {

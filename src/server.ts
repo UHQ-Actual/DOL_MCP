@@ -6,13 +6,24 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { DolApiClient } from "./dolApi.js";
-import { loadDolApiKey, loadGooglePlacesApiKey, loadSamApiKey } from "./env.js";
+import {
+  loadDolApiKey,
+  loadGooglePlacesApiKey,
+  loadOpenCorporatesApiKey,
+  loadSamApiKey,
+} from "./env.js";
+import { OpenCorporatesClient } from "./openCorporates.js";
 import { GooglePlacesClient } from "./places.js";
 import { answerGovernmentDataQuestion } from "./queryRouter.js";
 import { SamGovClient } from "./sam.js";
 import { createToolHandlers, toTextResult } from "./tools.js";
 
-export function createServer(client: DolApiClient, samApiKey?: string, googlePlacesApiKey?: string): McpServer {
+export function createServer(
+  client: DolApiClient,
+  samApiKey?: string,
+  googlePlacesApiKey?: string,
+  openCorporatesApiKey?: string,
+): McpServer {
   const server = new McpServer({
     name: "dol-whd-mcp",
     version: "0.1.0",
@@ -24,6 +35,9 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
     new SamGovClient({ apiKey: samApiKey }),
     undefined,
     new GooglePlacesClient({ apiKey: googlePlacesApiKey }),
+    undefined,
+    undefined,
+    new OpenCorporatesClient({ apiKey: openCorporatesApiKey }),
   );
 
   server.registerTool(
@@ -461,6 +475,48 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
   );
 
   server.registerTool(
+    "business_entity_search",
+    {
+      title: "Search State Business Registration via OpenCorporates",
+      description:
+        "Search Secretary of State / DFI business registrations via OpenCorporates (sourced directly from official state registries; data lineage is auditable). Use to map a trade name to its legal entity, identify the registered agent for service of process, find related entities under common ownership, or confirm an establishment is an active legal entity. Free tier is ~50 lookups/day with attribution; higher volume requires an OPENCORPORATES_API_KEY env var. For US states, pass the two-letter state code (MI, IL, etc.) as `jurisdictionCode` and it auto-prefixes to OpenCorporates' `us_xx` format. Returns name, company number, status, type, incorporation date, registered address, previous names, and an opencorporates_url for source-tracing.",
+      inputSchema: {
+        query: z.string().min(1).describe("Entity name (or partial name) to search. Required."),
+        jurisdictionCode: z
+          .string()
+          .optional()
+          .describe("Two-letter US state code (MI, IL, OH, etc.) or full OpenCorporates code (us_mi). When omitted, searches all jurisdictions globally — narrow this for restaurant/labor research where state matters."),
+        currentStatus: z
+          .string()
+          .optional()
+          .describe("Filter by entity status. Common values vary by state: Active, Dissolved, Withdrawn, Revoked, Forfeited, Inactive, Inactive - Dissolved."),
+        companyType: z.string().optional().describe("Filter by company type, e.g. 'Limited Liability Company', 'Domestic For-Profit Corporation', 'Cooperative Association'."),
+        inactive: z.boolean().optional().describe("Set true to include only inactive entities, false for only active. Omit for both."),
+        incorporationDateFrom: z.string().optional().describe("Lower bound for incorporation_date in YYYY-MM-DD form."),
+        incorporationDateTo: z.string().optional().describe("Upper bound for incorporation_date in YYYY-MM-DD form."),
+        maxResults: z.number().int().min(1).max(100).optional().describe("Maximum companies to return per page. OpenCorporates caps at 100."),
+        dryRun: z.boolean().optional().describe("Return sample companies without calling OpenCorporates. Useful when no API key is configured or for offline testing."),
+      },
+    },
+    async (args) => toTextResult(await handlers.searchBusinessEntity(args)),
+  );
+
+  server.registerTool(
+    "business_entity_detail",
+    {
+      title: "Get Business Entity Detail via OpenCorporates",
+      description:
+        "Look up one entity by jurisdiction + state company number via OpenCorporates. Use after `business_entity_search` to get the full canonical record (full address, previous names, branch info, dissolution date, registry URL). Free with attribution.",
+      inputSchema: {
+        jurisdictionCode: z.string().min(1).describe("Two-letter US state code (e.g., MI) or full OpenCorporates code (us_mi)."),
+        companyNumber: z.string().min(1).describe("State-issued company / entity / charter number."),
+        dryRun: z.boolean().optional().describe("Return sample data without calling OpenCorporates."),
+      },
+    },
+    async (args) => toTextResult(await handlers.getBusinessEntity(args)),
+  );
+
+  server.registerTool(
     "adv_estimate",
     {
       title: "Estimate Annual Dollar Volume (ADV) and FLSA $500K Coverage Flag",
@@ -548,8 +604,9 @@ async function main(): Promise<void> {
   const apiKey = loadDolApiKey();
   const samApiKey = loadSamApiKey();
   const googlePlacesApiKey = loadGooglePlacesApiKey();
+  const openCorporatesApiKey = loadOpenCorporatesApiKey();
   const client = new DolApiClient({ apiKey });
-  const server = createServer(client, samApiKey, googlePlacesApiKey);
+  const server = createServer(client, samApiKey, googlePlacesApiKey, openCorporatesApiKey);
   await server.connect(new StdioServerTransport());
 }
 
