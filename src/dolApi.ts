@@ -64,7 +64,7 @@ export class DolApiClient {
     this.apiKey = apiKey;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.fetchFn = options.fetchFn ?? ((input, init) => fetch(input, init));
-    this.maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? 2));
+    this.maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? 4));
     this.sleepFn = options.sleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
@@ -206,19 +206,26 @@ function isTransientStatus(status: number): boolean {
   return status === 429 || status === 502 || status === 503 || status === 504;
 }
 
+const RETRY_AFTER_CAP_MS = 30_000;
+const RETRY_BACKOFF_BASE_MS = 1000;
+const RETRY_BACKOFF_CAP_MS = 16_000;
+
 function retryDelayMs(response: Response, attempt: number): number {
   const retryAfter = response.headers.get("retry-after");
   if (retryAfter) {
     const seconds = Number(retryAfter);
     if (Number.isFinite(seconds) && seconds >= 0) {
-      return seconds * 1000;
+      return Math.min(RETRY_AFTER_CAP_MS, seconds * 1000);
     }
     const retryDate = Date.parse(retryAfter);
     if (Number.isFinite(retryDate)) {
-      return Math.max(0, retryDate - Date.now());
+      return Math.min(RETRY_AFTER_CAP_MS, Math.max(0, retryDate - Date.now()));
     }
   }
-  return Math.min(5000, 500 * attempt);
+  const exponential = RETRY_BACKOFF_BASE_MS * 2 ** attempt;
+  const capped = Math.min(RETRY_BACKOFF_CAP_MS, exponential);
+  const jitter = Math.random() * (capped * 0.2);
+  return Math.round(capped + jitter);
 }
 
 export function normalizeEnforcementQuery(input: EnforcementQueryInput = {}): EnforcementQuery {
