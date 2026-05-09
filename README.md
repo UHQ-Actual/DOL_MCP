@@ -126,6 +126,7 @@ Claude.ai's mobile app shares Custom Connectors with the web UI, so adding the r
 - `usaspending_award_search`: Search USAspending.gov for federal awards with KNOWN obligated dollar amounts. Filters by NAICS, PSC, recipient, awarding agency, place-of-performance state/city/county FIPS, award amount range, and start-date range. Defaults to contract award types (A, B, C, D). No API key required.
 - `places_search`: Search Google Places (New) Text Search for businesses in an area. Returns deduped results with `googleMapsUrl` for source-tracing. Designed as a per-round retrieval primitive for the Restaurant Research Agent.
 - `places_detail`: Look up one Google place by Place ID. Returns hours, delivery/dine-in flags, and (optionally) editorialSummary and reviews.
+- `adv_estimate`: Deterministic Annual Dollar Volume calculator for FLSA $500k enterprise-coverage screening. Encodes Methods 1-4 (per-employee, per-seat, chain per-unit, format default), the geographic cost-of-living multiplier, +/-40% range, and the FLSA flag (Above / Below / Borderline / Insufficient Data). Screening signal only; not a coverage determination.
 
 LCA tools use official OFLC disclosure workbooks from the DOL Performance Data page. The workbooks can be large, so downloaded files are cached under `.cache/dol-lca/`. You can also pass `localFile` with an already-downloaded official LCA disclosure XLSX file.
 

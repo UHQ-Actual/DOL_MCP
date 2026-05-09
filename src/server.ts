@@ -442,6 +442,53 @@ export function createServer(client: DolApiClient, samApiKey?: string, googlePla
     async (args) => toTextResult(await handlers.getPlaceDetail(args)),
   );
 
+  server.registerTool(
+    "adv_estimate",
+    {
+      title: "Estimate Annual Dollar Volume (ADV) and FLSA $500K Coverage Flag",
+      description:
+        "Deterministic ADV screening calculator for FLSA enterprise-coverage triage. Encodes Methods 1-4 (per-employee, per-seat, chain per-unit, format default), the geographic cost-of-living multiplier, +/-40% range math, and the $500,000 FLSA flag (Above / Below / Borderline / Insufficient Data). NOT a coverage determination — screening signal only. Method selection: chain per-unit ADV beats employee count beats seat count beats format default. Returns estimate, range, FLSA flag, confidence, applied multiplier, and a structured advNotes line ready to drop into a research table.",
+      inputSchema: {
+        serviceType: z
+          .enum(["LSR", "FSR", "Unclear"])
+          .optional()
+          .describe("Service type. Required for Method 1 per-employee benchmarks. Defaults to Unclear ($67k/employee) if omitted."),
+        format: z
+          .string()
+          .optional()
+          .describe("Restaurant format, optionally with cuisine qualifier (e.g. 'Casual dining — Italian', 'Pizzeria', 'Fast food'). Lead term is normalized; cuisine after em-dash is ignored for benchmarks. Required for Methods 2 and 4."),
+        chainFlag: z
+          .enum(["Yes", "No", "Unknown"])
+          .optional()
+          .describe("Whether the establishment is part of a multi-location brand. Drives Method 3 selection and adds the enterprise-coverage caveat to advNotes when Yes."),
+        employeeCount: z.number().positive().optional().describe("Total employees at the single establishment. Triggers Method 1 (per-employee)."),
+        seatCount: z.number().positive().optional().describe("Total dining seats. Triggers Method 2 (per-seat) when employeeCount is absent."),
+        chainPerUnitAdv: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Brand-reported per-unit annual sales (from FDD or industry report). Triggers Method 3 when chainFlag is Yes; takes precedence over Methods 1 and 2."),
+        areaType: z
+          .enum(["major_metro", "mid_metro", "small_or_rural"])
+          .optional()
+          .describe("Area tier for the cost-of-living multiplier. major_metro = 1.20×; mid_metro = 1.00× (default); small_or_rural = 0.85×."),
+        highCostOfLivingState: z
+          .boolean()
+          .optional()
+          .describe("Add +0.10 to the area multiplier for CA, NY, MA, WA, or HI."),
+        listPageEmployeeData: z
+          .boolean()
+          .optional()
+          .describe("Set true when employeeCount came from a list/aggregator page rather than a direct profile. Caps Method 1 confidence at Low."),
+        staleSources: z
+          .boolean()
+          .optional()
+          .describe("Set true when the underlying source data is older than 12 months. Forces confidence to Very Low."),
+      },
+    },
+    async (args) => toTextResult(await handlers.estimateAdv(args)),
+  );
+
   return server;
 }
 

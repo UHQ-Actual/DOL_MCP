@@ -11,6 +11,7 @@ import { OshaFieldsInput, OshaInspectionClient, OshaInspectionDetailInput, OshaI
 import { GooglePlacesClient, PlacesDetailInput, PlacesSearchInput } from "./places.js";
 import { SamGovClient, SamOpportunityDetailInput, SamOpportunitySearchInput } from "./sam.js";
 import { UsaSpendingAwardSearchInput, UsaSpendingClient } from "./usaspending.js";
+import { AdvEstimateInput, estimateAdv } from "./adv.js";
 
 export interface MetadataInput {
   search?: string;
@@ -174,6 +175,10 @@ export function createToolHandlers(
 
     searchUsaSpendingAwards: async (input: UsaSpendingAwardSearchInput = {}) => {
       return await usaSpendingClient.search(input);
+    },
+
+    estimateAdv: async (input: AdvEstimateInput) => {
+      return estimateAdv(input);
     },
 
     searchPlaces: async (input: PlacesSearchInput) => {
