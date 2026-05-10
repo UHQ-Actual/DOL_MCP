@@ -19,6 +19,7 @@ import {
   OpenCorporatesSearchInput,
 } from "./openCorporates.js";
 import { getOshaJurisdiction, OshaJurisdictionLookupInput } from "./oshaJurisdiction.js";
+import { getSosPortal, SosPortalLookupInput } from "./sosPortal.js";
 
 export interface MetadataInput {
   search?: string;
@@ -204,6 +205,10 @@ export function createToolHandlers(
 
     getOshaJurisdiction: async (input: OshaJurisdictionLookupInput) => {
       return getOshaJurisdiction(input);
+    },
+
+    getSosPortal: async (input: SosPortalLookupInput) => {
+      return getSosPortal(input);
     },
 
     searchPlaces: async (input: PlacesSearchInput) => {

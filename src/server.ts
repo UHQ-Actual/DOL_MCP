@@ -318,6 +318,19 @@ export function createServer(
   );
 
   server.registerTool(
+    "sos_portal_lookup",
+    {
+      title: "Look Up State Business Registration Portal by State",
+      description:
+        "Static reference: returns the URL and agency for the Secretary of State (or DFI / Corporation Commission, depending on the state) business-entity search portal for a given US state. Use this when the user wants to verify an entity manually, file a records request, or use a state's own search form. Includes bulk-download availability and pricing where published. The 10 Midwest states are verified with detailed notes; the other 40 states are encoded with general portal URLs that should be sanity-checked before enforcement use. For programmatic lookups, prefer business_entity_search via OpenCorporates.",
+      inputSchema: {
+        stateCode: z.string().min(2).max(2).describe("USPS two-letter state code (e.g., MI, OH, CA). Case-insensitive."),
+      },
+    },
+    async (args) => toTextResult(await handlers.getSosPortal(args)),
+  );
+
+  server.registerTool(
     "osha_state_plan_lookup",
     {
       title: "Look Up OSHA Jurisdiction by State",
