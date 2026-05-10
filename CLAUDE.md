@@ -17,6 +17,7 @@ TypeScript MCP server exposing U.S. labor-enforcement and contract data as tools
 | FLSA $500k screening | `adv_estimate` |
 | Census ACS area profile | `census_area_profile` |
 | Business entity registration | `business_entity_search`, `business_entity_detail` (OpenCorporates) |
+| OSHA jurisdiction reference | `osha_state_plan_lookup` |
 | Plain-English router | `ask_government_data` |
 
 Registered with Claude Code at user scope: `claude mcp add dol-whd -s user -- node <repo>/dist/server.js`.
@@ -84,6 +85,7 @@ Pattern: one file per upstream API, mirroring `sam.ts` / `places.ts`.
 | `src/adv.ts` | Pure Annual Dollar Volume calculator (no API) for FLSA $500k screening |
 | `src/census.ts` | Census Bureau geocoder + ACS 5-year client for area population and tier classification |
 | `src/openCorporates.ts` | OpenCorporates v0.4 API client for state business-registration lookups (free tier ~50/day; key in `OPENCORPORATES_API_KEY`) |
+| `src/oshaJurisdiction.ts` | Static OSHA jurisdiction reference (50 states + DC + territories) — tier, program name, expected reporting lag, records-request path |
 | `src/places.ts` | Google Places (New) Text Search + Place Details |
 | `src/queryRouter.ts` | `ask_government_data` plain-English routing |
 | `src/tools.ts` | `createToolHandlers()` wires clients to handlers |

@@ -317,6 +317,19 @@ export function createServer(
     async (args) => toTextResult(await handlers.getOshaInspection(args)),
   );
 
+  server.registerTool(
+    "osha_state_plan_lookup",
+    {
+      title: "Look Up OSHA Jurisdiction by State",
+      description:
+        "Static reference: returns the OSHA jurisdiction tier (federal_osha / public_only_state_plan / complete_state_plan), program name (MIOSHA, Cal/OSHA, IOSHA, etc.), administering agency, expected reporting lag in days for state-plan submissions to federal OIS, public-records request path, and a one-line caveat the agent can paste alongside `osha_inspection_search` results. Use this when an agent's OSHA query in MI / MN / IA / IN / CA / WA returns sparse recent data — the lookup tells the agent (and the user) why and how to get fresher data.",
+      inputSchema: {
+        stateCode: z.string().min(2).max(2).describe("USPS two-letter state code (e.g., MI, OH, CA). Case-insensitive."),
+      },
+    },
+    async (args) => toTextResult(await handlers.getOshaJurisdiction(args)),
+  );
+
   const samSearchSchema = {
     keywords: z.string().optional().describe("Opportunity title keywords."),
     naicsCodes: z.array(z.string()).optional().describe("NAICS codes to search; each code is queried separately and deduplicated."),

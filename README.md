@@ -120,6 +120,7 @@ Claude.ai's mobile app shares Custom Connectors with the web UI, so adding the r
 - `osha_fields`: Return metadata for the official DOL OSHA `inspection` or `violation` dataset.
 - `osha_inspection_search`: Search OSHA inspections by establishment, state, city, NAICS, inspection type, safety/health, and open-date range. Optionally joins non-deleted violation/citation records.
 - `osha_inspection_detail`: Look up one OSHA inspection by `activity_nr` and optionally join violation/citation records.
+- `osha_state_plan_lookup`: Static reference returning OSHA jurisdiction tier (federal_osha / public_only_state_plan / complete_state_plan), program name (MIOSHA, Cal/OSHA, IOSHA, etc.), administering agency, expected reporting lag, public-records request path, and a one-line caveat for any of the 50 states + DC + territories. Pair with `osha_inspection_search` to annotate sparse results with the right state-plan caveat.
 - `sam_opportunities_search`: Search official SAM.gov contract opportunities by title keywords, NAICS codes, procurement types, set-aside code, contracting-office state, place-of-performance state/city, and posted date range. SAM.gov returns SOLICITATIONS, not awarded contracts; use `usaspending_award_search` for awarded dollar amounts.
 - `sam_opportunity_detail`: Look up one SAM.gov opportunity by `noticeId`.
 - `sam_reference`: Return common SAM.gov procurement type and set-aside codes.

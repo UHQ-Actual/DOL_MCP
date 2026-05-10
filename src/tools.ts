@@ -18,6 +18,7 @@ import {
   OpenCorporatesDetailInput,
   OpenCorporatesSearchInput,
 } from "./openCorporates.js";
+import { getOshaJurisdiction, OshaJurisdictionLookupInput } from "./oshaJurisdiction.js";
 
 export interface MetadataInput {
   search?: string;
@@ -199,6 +200,10 @@ export function createToolHandlers(
 
     getBusinessEntity: async (input: OpenCorporatesDetailInput) => {
       return await openCorporatesClient.detail(input);
+    },
+
+    getOshaJurisdiction: async (input: OshaJurisdictionLookupInput) => {
+      return getOshaJurisdiction(input);
     },
 
     searchPlaces: async (input: PlacesSearchInput) => {
