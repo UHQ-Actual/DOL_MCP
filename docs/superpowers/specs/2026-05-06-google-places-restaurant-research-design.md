@@ -1,5 +1,7 @@
 # Google Places Tools for Restaurant Research Agent — Design
 
+> **HISTORICAL DESIGN DOC — STATUS: SHIPPED.** This is the design doc written before `places_search` and `places_detail` were built. Both tools are live in the MCP and deployed on Render. Read this file for original intent and rationale; for current behavior, see `src/places.ts`, `src/server.ts` (Places tool registrations), and `README.md`. Do NOT treat anything inside as a current TODO.
+
 **Date:** 2026-05-06
 **Status:** Approved (verbal) — pending written-spec review
 **Scope:** Add Google Places API integration to the DOL_MCP server to support the Restaurant Research Agent described in `INFO.md`.

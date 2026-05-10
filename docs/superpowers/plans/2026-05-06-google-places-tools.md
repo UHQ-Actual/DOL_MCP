@@ -1,6 +1,8 @@
 # Google Places Tools Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **HISTORICAL PLAN — STATUS: COMPLETED.** Every task in this plan was shipped. The unchecked checkboxes and "not yet implemented" assertions inside reflect the pre-implementation state and are NOT current TODOs. For current behavior, see `src/places.ts` and the `places_search` / `places_detail` tool registrations in `src/server.ts`.
+
+> **For agentic workers (historical):** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `places_search` and `places_detail` MCP tools backed by Google Places API (New) Text Search and Place Details, supporting the Restaurant Research Agent workflow described in `INFO.md`.
 

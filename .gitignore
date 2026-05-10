@@ -3,5 +3,8 @@ dist/
 .env
 .cache/
 .history/
+.playwright-mcp/
+tmp/
 *.log
+*.tmp
 whd_whisard.csv

@@ -74,7 +74,6 @@ The legacy `cofs.lara.state.mi.us` URLs are retired as of June 23, 2025. Current
 
 Returns full legal name, entity ID, formation date, type, current status, registered agent details.
 **Bulk:** Contact LARA Corporations Division. No published API.
-**Notes:** Any internal docs / old links pointing at `cofs.lara.state.mi.us` need updating.
 
 ### Minnesota — MBLSPortal
 Free search at mblsportal.sos.mn.gov. Active business CSV available as a weekly download.
