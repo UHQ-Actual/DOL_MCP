@@ -1,6 +1,15 @@
 # DOL_MCP — Claude Code Notes
 
-TypeScript MCP server exposing U.S. labor-enforcement and contract data as tools for Claude Code.
+TypeScript MCP server exposing U.S. labor-enforcement and contract data as tools for Claude Code, Claude.ai (web + mobile), and any other MCP client.
+
+## Quick orientation for new development cycles
+
+- **Live deployment**: https://dol-whd-mcp.onrender.com (streamable HTTP MCP at `/mcp`, health at `/health`). Render auto-deploys on every push to `UHQ-Actual/DOL_MCP:main` via `render.yaml`.
+- **Public repo**: [github.com/UHQ-Actual/DOL_MCP](https://github.com/UHQ-Actual/DOL_MCP). Source is git-subtree-split out of the parent monorepo `Coding/` at `WHD/DOL_MCP/`.
+- **Agent behavioral rules**: `systemprompt.md` (in repo root) holds `<DEPLOYMENT>`, `<INTERACTION>`, and `<TOOL_ROUTING>` blocks. **The MCP server cannot push prompt updates to clients** — when you change `systemprompt.md`, the user must paste the new content into their Claude Project / connector for the rules to take effect.
+- **Tests**: 131 tests, all mocked-fetch. `npm test` runs in ~10s. Always green before commit.
+- **Tool count**: 27 tools across 13 sources (see "What it does" below).
+- **Cold-start caveat**: Render free-tier spins down after 15 min idle. First request after a pause adds 30-50s warm-up. JSONL caches in `.cache/foreign-labor/` are wiped along with the container.
 
 ## What it does
 
@@ -66,10 +75,22 @@ When the user mentions "the offices" or names one of these cities without contex
 npm install          # In WSL: must reinstall, never copy node_modules across Windows/WSL
 npm run build        # tsc -p tsconfig.json → dist/
 npm run typecheck    # tsc --noEmit
-npm test             # tsx --test tests/*.test.ts (mocked fetch only)
+npm test             # tsx --test tests/*.test.ts (mocked fetch only; ~131 tests, ~10s)
 npm start            # stdio MCP (dist/server.js)
 npm run start:http   # streamable HTTP MCP at :8787
 ```
+
+To push DOL_MCP-only history to GitHub (subtree split; runs from the parent monorepo root, not from `WHD/DOL_MCP/`):
+
+```bash
+gh auth switch -u UHQ-Actual
+git subtree split --prefix=WHD/DOL_MCP HEAD -b dol-mcp-export
+git push https://github.com/UHQ-Actual/DOL_MCP.git dol-mcp-export:main
+gh auth switch -u TrueCrimeDev
+git branch -D dol-mcp-export
+```
+
+Render auto-deploys on push to `main`. Verify with `curl https://dol-whd-mcp.onrender.com/health`.
 
 ## File layout
 
@@ -93,7 +114,7 @@ Pattern: one file per upstream API, mirroring `sam.ts` / `places.ts`.
 | `src/tools.ts` | `createToolHandlers()` wires clients to handlers |
 | `src/server.ts` | `createServer()` registers MCP tools with Zod schemas |
 | `src/httpServer.ts` | Streamable HTTP transport |
-| `src/env.ts` | `loadDolApiKey` / `loadSamApiKey` / `loadGooglePlacesApiKey` |
+| `src/env.ts` | `loadDolApiKey` / `loadSamApiKey` / `loadGooglePlacesApiKey` / `loadOpenCorporatesApiKey` (env-then-file resolution) |
 | `tests/<name>.test.ts` | Per-source unit tests using `node:test`, fetch always mocked |
 
 ## Adding a new tool
@@ -118,15 +139,42 @@ Keys resolve via `src/env.ts` in this order:
 3. `<cwd>/.env`
 4. `<dir-of-env.ts>/../.env`
 
+### All env vars
+
+| Variable | Used by | Required? | Notes |
+|---|---|---|---|
+| `DOL_API_KEY` | DOL Open Data API (WHD, OSHA, datasets) | **Required** | Server refuses to start without it. Free at https://api.dol.gov/. |
+| `SAM_API_KEY` (or `SAM_GOV_API_KEY`) | SAM.gov Opportunities | Optional | Without it, SAM tools default to `dryRun`. Free at https://sam.gov/. |
+| `GOOGLE_PLACES_API_KEY` | Google Places (New) | Optional | Without it, Places tools default to `dryRun`. Paid; create at https://console.cloud.google.com/. |
+| `OPENCORPORATES_API_KEY` | OpenCorporates v0.4 | Optional | Without it, business_entity_* tools work but rate-limited to ~50/day with attribution. Free signup at https://opencorporates.com/. |
+| `DOL_MCP_HOST` | HTTP server | Optional | Default `127.0.0.1`. Set `0.0.0.0` for Render. |
+| `DOL_MCP_PORT` (or `PORT`) | HTTP server | Optional | Default `8787`. Render injects `PORT`. |
+| `DOL_MCP_AUTH_TOKEN` | HTTP server | Optional | When set, requires `Authorization: Bearer <token>` or `X-API-Key`. **Currently disabled** in production because Claude.ai's connector form has no Bearer-token field; the Render URL itself is the secret. |
+| `DOL_MCP_ALLOW_ORIGIN` | HTTP server CORS | Optional | Default `*`. Set to `https://claude.ai` for the production deploy. |
+| `DOL_MCP_ENV_FILE` | env-file resolution | Optional | Override the default `.env` lookup. |
+
 `.env` is gitignored. **`.history/` is gitignored** because the VSCode "Local History" extension snapshots `.env` to `.env_<timestamp>` files that contain live API keys — never commit these.
+
+### Production deployment
+
+Render reads `render.yaml` and provisions everything. Secrets (`DOL_API_KEY`, `SAM_API_KEY`, `GOOGLE_PLACES_API_KEY`, `OPENCORPORATES_API_KEY`) are marked `sync: false` in the YAML — Render prompts for them on Blueprint Apply and never persists them to git. After any new env var is added to `render.yaml`, the operator must paste the value into the Render Environment tab; the YAML change alone won't populate the value.
+
+Verify the deploy:
+
+```bash
+curl https://dol-whd-mcp.onrender.com/health
+# {"ok":true,"name":"dol-whd-mcp","transport":"streamable-http","mcpPath":"/mcp","authRequired":false}
+```
 
 ## Gotchas
 
 - **WSL ↔ Windows node_modules.** If `npx tsx` errors about `@esbuild/win32-x64`, the modules came from Windows. Fix: `rm -rf node_modules && npm install` in WSL.
 - **Lefthook hangs.** The parent git repo has lefthook hooks that block on lint/types of unrelated projects in this WSL setup. Bypass with `LEFTHOOK=0 git commit -m "..."` (lefthook's own opt-out — not `--no-verify`, which is more nuclear).
 - **Google Places `includedType` vs `includedTypes`.** Text Search uses `includedType` (singular string); Nearby Search uses `includedTypes` (plural array). Don't conflate. The MCP schema accepts an array for forward compat, but the Text Search wire payload sends only the first element. Clean this up if you ever extend to Nearby Search.
-- **No retries on 429.** By design (YAGNI). Add a single backoff-retry if Google Places rate-limits become operational.
-- **`foreign_labor_search` first-call cost.** First request per `(visaProgram, fiscalYear, fiscalQuarter)` downloads + stream-parses the official OFLC XLSX (30-90s for LCA quarters) and writes a gzipped JSONL alongside it in `cacheDir`. Subsequent calls bypass the XLSX entirely and stream-read the JSONL (1-3s). On Render free-tier, the container's ephemeral disk wipes after 15 min idle so the cache rebuilds on cold start.
+- **DOL 429 retries.** `DolApiClient` retries 429 / 502 / 503 / 504 up to 4 times with exponential backoff (~2s, 4s, 8s, 16s, capped at 16s per attempt; respects `Retry-After` capped at 30s). Total max wait per request is ~30s, comfortably under the 60s Claude.ai MCP transport timeout. Tune via the `maxRetries` constructor option.
+- **`foreign_labor_search` first-call cost.** First request per `(visaProgram, fiscalYear, fiscalQuarter)` downloads + stream-parses the official OFLC XLSX (30-90s for LCA quarters) and writes a gzipped JSONL alongside it in `cacheDir`. Subsequent calls bypass the XLSX entirely and stream-read the JSONL (1-3s). On Render free-tier the container's ephemeral disk wipes after 15 min idle, so the cache rebuilds on cold start. **Per `<TOOL_ROUTING>` rules: don't pull this tool unless the user explicitly asks about visa data.**
+- **OpenCorporates rate limit.** Free tier ~50 lookups/day. The `<TOOL_ROUTING>` block restricts `business_entity_search` to legal-identity / ownership questions to avoid burning the budget on universe-building queries that should hit `places_search` instead.
+- **Render free-tier cold start.** ~30-50s on the first request after 15+ min idle. JSONL caches reset along with the container. If this becomes painful, options are (a) upgrade to Starter $7/mo for always-warm, (b) external uptime ping every 10 min, or (c) external object storage for cache durability.
 - **Repo lives in a monorepo-ish parent.** This project sits at `WHD/DOL_MCP/` inside a larger `Coding/` git repo. To push DOL_MCP-only history to GitHub: `git subtree split --prefix=WHD/DOL_MCP HEAD -b dol-mcp-export && git push https://github.com/UHQ-Actual/DOL_MCP.git dol-mcp-export:main`.
 - **GitHub account.** Public repo at [UHQ-Actual/DOL_MCP](https://github.com/UHQ-Actual/DOL_MCP). Switch with `gh auth switch -u UHQ-Actual` before pushes, then back to `TrueCrimeDev`.
 
@@ -136,12 +184,38 @@ Keys resolve via `src/env.ts` in this order:
 - Trailer for Claude commits: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
 - Never log API key values. Route every echoed URL or error body through `sanitizeUrl()`.
 - Spec/plan filenames use ISO `YYYY-MM-DD-<topic>-design.md` / `YYYY-MM-DD-<topic>.md`.
+- After any change to `systemprompt.md`, remind the operator to paste the new content into their Claude Project / connector — the MCP server can't push prompt updates to clients.
+
+## Agent behavioral rules — `systemprompt.md` summary
+
+The full rules live in `systemprompt.md`; this is a quick orientation so you don't re-derive them.
+
+**`<DEPLOYMENT>`** — Region scope (Midwest), state list, WHD hub-table mapping, priority industries (restaurants, car washes, construction, logistics/warehousing, agriculture, meat and poultry processing, janitorial, landscaping, retail and grocery, home care, hospitality), regional priorities (meat processing in IA/NE/MN/KS/MO; auto-supply in MI/OH/IN; H-2A footprints in MI/OH/WI/IL).
+
+**`<INTERACTION>`** — Clarifying questions reach the user via the `AskUserQuestion` tool only, never as free-text prose questions. Bundle related sub-questions into one call (max 4 per call). Default to acting on Midwest scope rather than asking which states.
+
+**`<TOOL_ROUTING>`** — Match tool subset to question domain:
+- Industry research, not consumer recommendations. **Never filter, sort, or truncate by rating, popularity, or review count unless the user explicitly asks.**
+- **HARD RULE — visa data is opt-in.** Never call `foreign_labor_search` / `lca_*` / `foreign_labor_*` unless the user has explicitly asked about visa workers, H-1B, H-2A, H-2B, LCA, PERM, or guest-worker programs. "Adding completeness" is not a justification.
+- Restaurants → `places_search` + `places_detail` + `adv_estimate`; no visa data.
+- Farms → H-2A only; never H-2B.
+- Construction / hospitality / non-ag seasonal → H-2B only; never H-2A.
+- Federal contracts → SAM + USAspending; no labor data unless requested.
+- Tech / specialty occupations → LCA tools.
+- **Establishment research tool chain**: `census_area_profile` → `places_search` → `osha_inspection_search` (for `employeesAtSite`) → `adv_estimate`.
+- **`business_entity_search` only** for legal-identity / ownership / DBA-to-legal-entity / registered-agent questions; not for general universe building.
+- **DBA vs legal entity cross-reference**: Places returns trade names; WHD/OSHA/registry use legal entities. When enforcement returns zero hits on a trade name, look up the legal entity via `business_entity_search` and retry.
+- **State vs city filtering**: prefer state filter (server-side) over city (client-side) for fan-outs.
+- **WHD `findings_end_date`**: date violations stopped, NOT case-conclusion. Wider window (≥ 2022-10-01) for "recent" queries.
+- **State-plan OSHA reporting lag**: in MI/MN/IA/IN, recent inspections may lag federal OIS by 1-3 months. Annotate, don't suppress.
 
 ## Companion docs
 
+- `systemprompt.md` — Agent behavioral rules (`<DEPLOYMENT>`, `<INTERACTION>`, `<TOOL_ROUTING>` blocks). Must be pasted into the operator's Claude Project / connector to take effect; the MCP server can't push prompt updates.
 - `INFO.md` — Spec for the Restaurant Research Agent (Claude Project) that uses `places_search` as its Pass 2 retrieval primitive. Source-tracing requirement (`googleMapsUrl` per row) drives the Places field mask.
-- `docs/data-sources/state-osha-programs.md` — Federal vs state-plan OSHA jurisdiction map for the 10 Midwest states; explains why `osha_inspection_search` data lags 1-3 months in state-plan states (MI/MN/IA/IN) and what's missing entirely (injury logs, narratives).
-- `docs/data-sources/state-business-registration.md` — Midwest Secretary of State / DFI business-entity portals; free search vs paid bulk; registered-agent and officer search availability per state. Reference for any future business_entity_search tool.
+- `docs/data-sources/state-osha-programs.md` — Federal vs state-plan OSHA jurisdiction map for the 10 Midwest states; explains why `osha_inspection_search` data lags 1-3 months in state-plan states (MI/MN/IA/IN) and what's missing entirely (injury logs, narratives). Pairs with the `osha_state_plan_lookup` tool.
+- `docs/data-sources/state-business-registration.md` — Midwest Secretary of State / DFI business-entity portals; free search vs paid bulk; registered-agent and officer search availability per state. Pairs with the `sos_portal_lookup` and `business_entity_search` tools.
 - `docs/superpowers/specs/2026-05-06-google-places-restaurant-research-design.md`
 - `docs/superpowers/plans/2026-05-06-google-places-tools.md`
+- `render.yaml` — Render Blueprint. Adds new env-var slots (`sync: false` for secrets) when new clients require keys.
 - `README.md` — User-facing tool reference and usage examples.
