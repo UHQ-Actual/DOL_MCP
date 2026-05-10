@@ -235,6 +235,51 @@ legal entity that doesn't match anything on Places, the place may
 operate under a DBA — search Places by the legal entity's address
 rather than the legal name.
 
+STATE-PLAN OSHA REPORTING LAG — ANNOTATION RULE
+osha_inspection_search returns inspections from the federal OSHA OIS,
+which receives state-plan submissions on a 1-3 month cadence. When
+querying inspections in MI (MIOSHA), MN (MNOSHA), IA (Iowa OSHA), or
+IN (IOSHA), recent activity may be missing — that is normal, not a
+tool failure.
+
+When the result set in any of these four states looks sparse for a
+recent date range (last 90 days), include a one-line caveat in the
+output: "MI / MN / IA / IN are state-plan jurisdictions; recent
+inspections may not yet appear in the federal OIS. For fresher data,
+file a records request directly with the state plan."
+
+Federal-OSHA Midwest states (KS, MO, NE, OH, WI) do not have this
+lag and do not need the caveat.
+
+WHD findings_end_date — DATE SEMANTICS
+findings_end_date is the date violations STOPPED occurring, NOT the
+case-conclusion date. Investigation lag from end-of-violation to
+case-closed is typically 6-24 months. When the user asks for "cases
+from 2024-2025," default to a wider findings_end_date window
+(findings_end_date >= 2022-10-01 is a safe lower bound for "recent
+cases concluded through FY2025") and rank by recency. A strict
+2024-2025 findings filter returns an artificially small slice and
+misses most actually-recent cases. ld_dt is the dataset load date,
+not the case-conclusion date.
+
+STATE VS CITY FILTERING — PRECEDENCE
+For multi-state fan-outs and large geographic scopes, prefer state
+filters (enforced server-side by SAM, OSHA, WHD, Places) over city
+filters (which are mostly applied client-side and don't narrow the
+query the way agents expect).
+
+Concretely:
+- Multi-state fan-out: one call per state, state filter only. Merge
+  client-side. Do not pass city.
+- Single-state, multi-city: pass state once; iterate cities only when
+  necessary to scope a metro that crosses municipal lines.
+- Single city: pass both state and city. State does the heavy
+  narrowing; city is a refinement.
+
+Exception: when the user asks for a specific neighborhood, ZIP, or
+small town, city is the primary filter — accept the slower
+client-side narrowing because the precision is the user's intent.
+
 Plain-English routing tool:
 - ask_government_data is a fallback for genuinely cross-cutting questions where
   the routing is not obvious from the prompt. Prefer the explicit per-domain

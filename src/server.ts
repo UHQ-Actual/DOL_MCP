@@ -63,7 +63,7 @@ export function createServer(
     {
       title: "Query WHD Enforcement Records",
       description:
-        "Query concluded Wage and Hour Division compliance actions from the DOL WHD Enforcement (WHISARD) dataset.",
+        "Query concluded Wage and Hour Division compliance actions from the DOL WHD Enforcement (WHISARD) dataset. IMPORTANT date semantics: `findings_end_date` is the date violations STOPPED occurring, NOT the date the case was concluded. Investigation lag from end-of-violation to case-closed is typically 6-24 months. When filtering for 'cases from 2024-2025,' use a wider findings_end_date window (e.g., findings_end_date >= 2022-10-01) and rank by recency; a strict 2024-2025 findings filter will return an artificially small slice. The `ld_dt` field is the dataset load date, not the case-conclusion date.",
       inputSchema: {
         limit: z.number().int().min(1).max(10000).optional().describe("Maximum records to return. DOL max is 10000."),
         offset: z.number().int().min(0).optional().describe("Records to skip for paging."),
